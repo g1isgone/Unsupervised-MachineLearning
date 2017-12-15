@@ -1,0 +1,22 @@
+Outline of Total Process: 
+* Import 4 Datasets
+* Analyze Missing Data
+* Combine Four Datasets into One
+* Conversion of Time Data
+* Exploring Null Values in Year 2001 'Ward'  
+* Exploration of Unique Labels: (1) The Unique Labels for each Column (2) Printing Out the Number of Unique Labels Per Column 
+* Dropping Columns 
+* Export DfTotal 
+* Unnest Location Data: Readding Latitude and Longitude 
+* Export and Import the New Cleaned Dataset With Latitude and Longitude Information
+
+Outline of Data Wrangling Process: 
+*  Combine Four Datasets into One: Chicago_Crimes_2001_to_2004.csv, Chicago_Crimes_2005_to_2007.csv, Chicago_Crimes_2008_to_2011.csv, Chicago_Crimes_2012_to_2017.csv
+* Conversion of Time Data 
+* Dropping Columns 
+* Unnest Location Data: Readding Latitude and Longitude 
+
+Outline of Data Exploration Process: 
+* Analyze Missing Data 
+* Exploring Null Values in Year 2001 'Ward'  
+* Exploration of Unique Labels: (1) The Unique Labels for each Column (2) Printing Out the Number of Unique Labels Per Column

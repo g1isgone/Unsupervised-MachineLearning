@@ -1,0 +1,11 @@
+,Description,Location Description,Arrest,Domestic,District,Month,Day,Hour,Weekday
+0,SIMPLE,STREET,False,False,2.0,1,12,18,4
+1,$500 AND UNDER,RESIDENCE,False,False,8.0,2,1,20,3
+2,OVER $500,APARTMENT,False,False,9.0,3,7,21,2
+3,TO VEHICLE,SIDEWALK,False,False,25.0,7,2,12,0
+4,$500 AND UNDER,STREET,False,False,25.0,3,3,19,5
+5,TO PROPERTY,OTHER,False,False,12.0,6,19,22,1
+6,SIMPLE,RESIDENCE,False,False,6.0,3,26,22,0
+7,OVER $500,STREET,False,False,11.0,2,19,15,0
+8,AUTOMOBILE,PARKING LOT/GARAGE(NON.RESID.),False,False,7.0,5,6,14,6
+9,TO VEHICLE,STREET,False,False,8.0,8,7,17,1

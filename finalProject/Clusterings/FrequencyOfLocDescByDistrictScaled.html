@@ -1,0 +1,735 @@
+
+<html>
+  <head>
+    
+<link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-0.12.10.min.css">
+<link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-widgets-0.12.10.min.css">
+<link rel="stylesheet" href="https://cdn.pydata.org/bokeh/release/bokeh-tables-0.12.10.min.css">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css">
+<style>div.hololayout {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+div.holoframe {
+	width: 75%;
+}
+
+div.holowell {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+form.holoform {
+    background-color: #fafafa;
+    border-radius: 5px;
+    overflow: hidden;
+	padding-left: 0.8em;
+    padding-right: 0.8em;
+    padding-top: 0.4em;
+    padding-bottom: 0.4em;
+}
+
+div.holowidgets {
+    padding-right: 0;
+	width: 25%;
+}
+
+div.holoslider {
+    min-height: 0 !important;
+    height: 0.8em;
+    width: 60%;
+}
+
+div.holoformgroup {
+    padding-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+div.hologroup {
+    padding-left: 0;
+    padding-right: 0.8em;
+    width: 50%;
+}
+
+.holoselect {
+    width: 92%;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.holotext {
+    width: 100%;
+    padding-left:  0.5em;
+    padding-right: 0;
+}
+
+.holowidgets .ui-resizable-se {
+	visibility: hidden
+}
+
+.holoframe > .ui-resizable-se {
+	visibility: hidden
+}
+
+.holowidgets .ui-resizable-s {
+	visibility: hidden
+}
+
+div.bk-hbox {
+    display: flex;
+    justify-content: center;
+}
+
+div.bk-hbox div.bk-plot {
+    padding: 8px;
+}
+
+div.bk-hbox div.bk-data-table {
+    padding: 20px;
+}
+</style>
+    
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-0.12.10.min.js" type="text/javascript"></script>
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-widgets-0.12.10.min.js" type="text/javascript"></script>
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-tables-0.12.10.min.js" type="text/javascript"></script>
+<script src="https://cdn.pydata.org/bokeh/release/bokeh-gl-0.12.10.min.js" type="text/javascript"></script>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js" type="text/javascript"></script>
+<script src="https://code.jquery.com/ui/1.10.4/jquery-ui.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.20/require.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js" type="text/javascript"></script>
+<script type="text/javascript">function HoloViewsWidget(){
+}
+
+HoloViewsWidget.comms = {};
+HoloViewsWidget.comm_state = {};
+
+HoloViewsWidget.prototype.init_slider = function(init_val){
+  if(this.load_json) {
+    this.from_json()
+  } else {
+    this.update_cache();
+  }
+}
+
+HoloViewsWidget.prototype.populate_cache = function(idx){
+  this.cache[idx].html(this.frames[idx]);
+  if (this.embed) {
+    delete this.frames[idx];
+  }
+}
+
+HoloViewsWidget.prototype.process_error = function(msg){
+
+}
+
+HoloViewsWidget.prototype.from_json = function() {
+  var data_url = this.json_path + this.id + '.json';
+  $.getJSON(data_url, $.proxy(function(json_data) {
+    this.frames = json_data;
+    this.update_cache();
+    this.update(0);
+  }, this));
+}
+
+HoloViewsWidget.prototype.dynamic_update = function(current){
+  if (current === undefined) {
+    return
+  }
+  if(this.dynamic) {
+    current = JSON.stringify(current);
+  }
+  function callback(initialized, msg){
+    /* This callback receives data from Python as a string
+       in order to parse it correctly quotes are sliced off*/
+    if (msg.content.ename != undefined) {
+      this.process_error(msg);
+    }
+    if (msg.msg_type != "execute_result") {
+      console.log("Warning: HoloViews callback returned unexpected data for key: (", current, ") with the following content:", msg.content)
+    } else {
+      if (msg.content.data['text/plain'].includes('Complete')) {
+        if (this.queue.length > 0) {
+          this.time = Date.now();
+          this.dynamic_update(this.queue[this.queue.length-1]);
+          this.queue = [];
+        } else {
+          this.wait = false;
+        }
+        return
+      }
+    }
+  }
+  this.current = current;
+  if ((window.Jupyter !== undefined) && (Jupyter.notebook.kernel != null)) {
+    var kernel = Jupyter.notebook.kernel;
+    callbacks = {iopub: {output: $.proxy(callback, this, this.initialized)}};
+    var cmd = "holoviews.plotting.widgets.NdWidget.widgets['" + this.id + "'].update(" + current + ")";
+    kernel.execute("import holoviews;" + cmd, callbacks, {silent : false});
+  }
+}
+
+HoloViewsWidget.prototype.update_cache = function(force){
+  var frame_len = Object.keys(this.frames).length;
+  for (var i=0; i<frame_len; i++) {
+    if(!this.load_json || this.dynamic)  {
+      frame = Object.keys(this.frames)[i];
+    } else {
+      frame = i;
+    }
+    if(!(frame in this.cache) || force) {
+      if ((frame in this.cache) && force) { this.cache[frame].remove() }
+      this.cache[frame] = $('<div />').appendTo("#"+"_anim_img"+this.id).hide();
+      var cache_id = "_anim_img"+this.id+"_"+frame;
+      this.cache[frame].attr("id", cache_id);
+      this.populate_cache(frame);
+    }
+  }
+}
+
+HoloViewsWidget.prototype.update = function(current){
+  if(current in this.cache) {
+    $.each(this.cache, function(index, value) {
+      value.hide();
+    });
+    this.cache[current].show();
+    this.wait = false;
+  }
+}
+
+HoloViewsWidget.prototype.init_comms = function() {
+  if ((window.Jupyter !== undefined) && (Jupyter.notebook.kernel !== undefined)) {
+    var widget = this;
+    comm_manager = Jupyter.notebook.kernel.comm_manager;
+    comm_manager.register_target(this.id, function (comm) {
+      comm.on_msg(function (msg) { widget.process_msg(msg) });
+    });
+  }
+}
+
+HoloViewsWidget.prototype.process_msg = function(msg) {
+}
+
+function SelectionWidget(frames, id, slider_ids, keyMap, dim_vals, notFound, load_json, mode, cached, json_path, dynamic){
+  this.frames = frames;
+  this.id = id;
+  this.slider_ids = slider_ids;
+  this.keyMap = keyMap
+  this.current_frame = 0;
+  this.current_vals = dim_vals;
+  this.load_json = load_json;
+  this.mode = mode;
+  this.notFound = notFound;
+  this.cached = cached;
+  this.dynamic = dynamic;
+  this.cache = {};
+  this.json_path = json_path;
+  this.init_slider(this.current_vals[0]);
+  this.queue = [];
+  this.wait = false;
+  if (!this.cached || this.dynamic) {
+    this.init_comms()
+  }
+}
+
+SelectionWidget.prototype = new HoloViewsWidget;
+
+
+SelectionWidget.prototype.get_key = function(current_vals) {
+  var key = "(";
+  for (var i=0; i<this.slider_ids.length; i++)
+  {
+    val = this.current_vals[i];
+    if (!(typeof val === 'string')) {
+      if (val % 1 === 0) { val = val.toFixed(1); }
+      else { val = val.toFixed(10); val = val.slice(0, val.length-1);}
+    }
+    key += "'" + val + "'";
+    if(i != this.slider_ids.length-1) { key += ', ';}
+    else if(this.slider_ids.length == 1) { key += ',';}
+  }
+  key += ")";
+  return this.keyMap[key];
+}
+
+SelectionWidget.prototype.set_frame = function(dim_val, dim_idx){
+  this.current_vals[dim_idx] = dim_val;
+  var key = this.current_vals;
+  if (!this.dynamic) {
+    key = this.get_key(key)
+  }
+  if (this.dynamic || !this.cached) {
+    if ((this.time !== undefined) && ((this.wait) && ((this.time + 10000) > Date.now()))) {
+      this.queue.push(key);
+      return
+    }
+    this.queue = [];
+    this.time = Date.now();
+    this.current_frame = key;
+    this.wait = true;
+    this.dynamic_update(key)
+  } else if (key !== undefined) {
+    this.update(key)
+  }
+}
+
+
+/* Define the ScrubberWidget class */
+function ScrubberWidget(frames, num_frames, id, interval, load_json, mode, cached, json_path, dynamic){
+  this.slider_id = "_anim_slider" + id;
+  this.loop_select_id = "_anim_loop_select" + id;
+  this.id = id;
+  this.interval = interval;
+  this.current_frame = 0;
+  this.direction = 0;
+  this.dynamic = dynamic;
+  this.timer = null;
+  this.load_json = load_json;
+  this.mode = mode;
+  this.cached = cached;
+  this.frames = frames;
+  this.cache = {};
+  this.length = num_frames;
+  this.json_path = json_path;
+  document.getElementById(this.slider_id).max = this.length - 1;
+  this.init_slider(0);
+  this.wait = false;
+  this.queue = [];
+  if (!this.cached || this.dynamic) {
+    this.init_comms()
+  }
+}
+
+ScrubberWidget.prototype = new HoloViewsWidget;
+
+ScrubberWidget.prototype.set_frame = function(frame){
+  this.current_frame = frame;
+  widget = document.getElementById(this.slider_id);
+  if (widget === null) {
+    this.pause_animation();
+    return
+  }
+  widget.value = this.current_frame;
+  if(this.cached) {
+    this.update(frame)
+  } else {
+    this.dynamic_update(frame)
+  }
+}
+
+
+ScrubberWidget.prototype.get_loop_state = function(){
+  var button_group = document[this.loop_select_id].state;
+  for (var i = 0; i < button_group.length; i++) {
+    var button = button_group[i];
+    if (button.checked) {
+      return button.value;
+    }
+  }
+  return undefined;
+}
+
+
+ScrubberWidget.prototype.next_frame = function() {
+  this.set_frame(Math.min(this.length - 1, this.current_frame + 1));
+}
+
+ScrubberWidget.prototype.previous_frame = function() {
+  this.set_frame(Math.max(0, this.current_frame - 1));
+}
+
+ScrubberWidget.prototype.first_frame = function() {
+  this.set_frame(0);
+}
+
+ScrubberWidget.prototype.last_frame = function() {
+  this.set_frame(this.length - 1);
+}
+
+ScrubberWidget.prototype.slower = function() {
+  this.interval /= 0.7;
+  if(this.direction > 0){this.play_animation();}
+  else if(this.direction < 0){this.reverse_animation();}
+}
+
+ScrubberWidget.prototype.faster = function() {
+  this.interval *= 0.7;
+  if(this.direction > 0){this.play_animation();}
+  else if(this.direction < 0){this.reverse_animation();}
+}
+
+ScrubberWidget.prototype.anim_step_forward = function() {
+  if(this.current_frame < this.length - 1){
+    this.next_frame();
+  }else{
+    var loop_state = this.get_loop_state();
+    if(loop_state == "loop"){
+      this.first_frame();
+    }else if(loop_state == "reflect"){
+      this.last_frame();
+      this.reverse_animation();
+    }else{
+      this.pause_animation();
+      this.last_frame();
+    }
+  }
+}
+
+ScrubberWidget.prototype.anim_step_reverse = function() {
+  if(this.current_frame > 0){
+    this.previous_frame();
+  } else {
+    var loop_state = this.get_loop_state();
+    if(loop_state == "loop"){
+      this.last_frame();
+    }else if(loop_state == "reflect"){
+      this.first_frame();
+      this.play_animation();
+    }else{
+      this.pause_animation();
+      this.first_frame();
+    }
+  }
+}
+
+ScrubberWidget.prototype.pause_animation = function() {
+  this.direction = 0;
+  if (this.timer){
+    clearInterval(this.timer);
+    this.timer = null;
+  }
+}
+
+ScrubberWidget.prototype.play_animation = function() {
+  this.pause_animation();
+  this.direction = 1;
+  var t = this;
+  if (!this.timer) this.timer = setInterval(function(){t.anim_step_forward();}, this.interval);
+}
+
+ScrubberWidget.prototype.reverse_animation = function() {
+  this.pause_animation();
+  this.direction = -1;
+  var t = this;
+  if (!this.timer) this.timer = setInterval(function(){t.anim_step_reverse();}, this.interval);
+}
+
+function extend(destination, source) {
+  for (var k in source) {
+    if (source.hasOwnProperty(k)) {
+      destination[k] = source[k];
+    }
+  }
+  return destination;
+}
+
+function update_widget(widget, values) {
+  if (widget.hasClass("ui-slider")) {
+    widget.slider('option', {
+      min: 0,
+      max: values.length-1,
+      dim_vals: values,
+      value: 0,
+      dim_labels: values
+	})
+    widget.slider('option', 'slide').call(widget, event, {value: 0})
+  } else {
+    widget.empty();
+    for (var i=0; i<values.length; i++){
+      widget.append($("<option>", {
+        value: i,
+        text: values[i]
+      }))
+    };
+    widget.data('values', values);
+    widget.data('value', 0);
+    widget.trigger("change");
+  };
+}
+
+// Define Bokeh specific subclasses
+function BokehSelectionWidget() {
+	SelectionWidget.apply(this, arguments);
+}
+
+function BokehScrubberWidget() {
+	ScrubberWidget.apply(this, arguments);
+}
+
+// Let them inherit from the baseclasses
+BokehSelectionWidget.prototype = Object.create(SelectionWidget.prototype);
+BokehScrubberWidget.prototype = Object.create(ScrubberWidget.prototype);
+
+// Define methods to override on widgets
+var BokehMethods = {
+	update_cache : function(){
+		$.each(this.frames, $.proxy(function(index, frame) {
+			this.frames[index] = JSON.parse(frame);
+		}, this));
+	},
+	update : function(current){
+		if (current === undefined) {
+			var data = undefined;
+		} else {
+			var data = this.frames[current];
+		}
+		if (data !== undefined) {
+			var doc = Bokeh.index[data.root].model.document;
+			doc.apply_json_patch(data.content);
+		}
+	},
+	init_comms : function() {
+	}
+}
+
+// Extend Bokeh widgets with backend specific methods
+extend(BokehSelectionWidget.prototype, BokehMethods);
+extend(BokehScrubberWidget.prototype, BokehMethods);
+</script>
+  </head>
+  <body>
+    <div class="hololayout row row-fluid">
+  <div class="holoframe" id="display_area5017f04d6e3e4a8f83c7893b6f69d297">
+    <div id="_anim_img5017f04d6e3e4a8f83c7893b6f69d297">
+      
+      <div style='display: table; margin: 0 auto;'>
+
+<div class="bk-root">
+    <div class="bk-plotdiv" id="2a4d533a-7f96-4e08-979a-f65b52826c42"></div>
+</div>
+<script type="text/javascript">
+  (function(root) {
+  function embed_document(root) {
+    var docs_json = {"ffb37918-39a3-45d5-a43a-d58ca223ed86":{"roots":{"references":[{"attributes":{"axis_label":"District","bounds":"auto","formatter":{"id":"c8940d54-c290-471a-b270-061cc3712e02","type":"CategoricalTickFormatter"},"major_label_orientation":"horizontal","plot":{"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"},"ticker":{"id":"5f194eac-1ef3-42c6-a1f6-0e2724f0af10","type":"CategoricalTicker"}},"id":"42c93650-5bde-4af3-8128-ddbac3024248","type":"CategoricalAxis"},{"attributes":{"overlay":{"id":"912ad592-7720-461a-b042-80ef4e33640b","type":"BoxAnnotation"}},"id":"143bf9ab-72b0-494f-802b-c4e2dda2ea33","type":"BoxZoomTool"},{"attributes":{"grid_line_color":{"value":null},"plot":{"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"},"ticker":{"id":"5f194eac-1ef3-42c6-a1f6-0e2724f0af10","type":"CategoricalTicker"}},"id":"045747ae-34d2-4577-999b-9adeb5ec6789","type":"Grid"},{"attributes":{},"id":"453ba3a0-025b-4d7d-a806-9e6803b9a85b","type":"BasicTickFormatter"},{"attributes":{},"id":"05945d91-5d7f-4721-942c-e7b856d4ef34","type":"PanTool"},{"attributes":{"high":11826,"low":67,"nan_color":"white","palette":["#ffffcc","#fffeca","#fffdc9","#fffdc7","#fffcc6","#fffcc5","#fffbc3","#fffbc2","#fffac0","#fff9bf","#fff9be","#fff8bc","#fff8bb","#fff7ba","#fff7b8","#fff6b7","#fff5b5","#fff5b4","#fff4b3","#fff4b1","#fff3b0","#fff3af","#fff2ad","#fff2ac","#fff1aa","#fff0a9","#fff0a8","#ffefa6","#ffefa5","#ffeea3","#ffeea2","#ffeda1","#feec9f","#feec9e","#feeb9d","#feeb9b","#feea9a","#fee999","#fee997","#fee896","#fee795","#fee793","#fee692","#fee691","#fee590","#fee48e","#fee48d","#fee38c","#fee28a","#fee289","#fee188","#fee186","#fee085","#fedf84","#fedf82","#fede81","#fedd80","#fedd7e","#fedc7d","#fedb7c","#fedb7a","#feda79","#feda78","#fed976","#fed875","#fed774","#fed673","#fed571","#fed370","#fed26f","#fed16d","#fed06c","#fece6b","#fecd69","#fecc68","#fecb67","#feca65","#fec864","#fec763","#fec661","#fec560","#fec35f","#fec25d","#fec15c","#fec05b","#febf5a","#febd58","#febc57","#febb56","#feba54","#feb853","#feb752","#feb650","#feb54f","#feb34e","#feb24c","#fdb14b","#fdb04b","#fdaf4a","#fdae4a","#fdac49","#fdab49","#fdaa48","#fda948","#fda847","#fda747","#fda546","#fda446","#fda345","#fda245","#fda144","#fda044","#fd9e43","#fd9d43","#fd9c42","#fd9b42","#fd9a41","#fd9941","#fd9840","#fd9640","#fd953f","#fd943f","#fd933e","#fd923e","#fd913d","#fd8f3d","#fd8e3c","#fd8d3c","#fc8c3b","#fc8a3b","#fc883a","#fc863a","#fc8439","#fc8238","#fc8038","#fc7e37","#fc7c37","#fc7a36","#fc7836","#fc7635","#fc7434","#fc7234","#fc7033","#fc6e33","#fc6c32","#fc6a32","#fc6831","#fc6630","#fc6430","#fc622f","#fc602f","#fc5e2e","#fc5c2e","#fc5a2d","#fc582d","#fc562c","#fc542b","#fc522b","#fc502a","#fc4e2a","#fb4c29","#fa4b29","#f94928","#f94828","#f84627","#f74427","#f64327","#f64126","#f53f26","#f43e25","#f33c25","#f23b24","#f23924","#f13724","#f03623","#ef3423","#ee3222","#ee3122","#ed2f21","#ec2d21","#eb2c20","#eb2a20","#ea2920","#e9271f","#e8251f","#e7241e","#e7221e","#e6201d","#e51f1d","#e41d1c","#e31c1c","#e31a1c","#e2191c","#e0181c","#df171c","#de161d","#dd161d","#dc151d","#da141e","#d9131e","#d8121e","#d7121f","#d6111f","#d4101f","#d30f20","#d20e20","#d10d20","#d00d20","#cf0c21","#cd0b21","#cc0a21","#cb0922","#ca0922","#c90822","#c70723","#c60623","#c50523","#c40424","#c30424","#c10324","#c00225","#bf0125","#be0025","#bd0025","#bb0026","#b90026","#b70026","#b50026","#b30026","#b10026","#af0026","#ad0026","#ac0026","#aa0026","#a80026","#a60026","#a40026","#a20026","#a00026","#9e0026","#9c0026","#9a0026","#980026","#960026","#950026","#930026","#910026","#8f0026","#8d0026","#8b0026","#890026","#870026","#850026","#830026","#810026","#800026"]},"id":"3ac083e9-a199-485d-9ca5-57f4b8ebd653","type":"LinearColorMapper"},{"attributes":{"axis_label":"Location Description","bounds":"auto","formatter":{"id":"b12d0849-5a1b-4ec8-a1e9-e69eafd0cd68","type":"CategoricalTickFormatter"},"major_label_orientation":"horizontal","plot":{"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"},"ticker":{"id":"f128bf0b-790f-47e1-90b2-9e08ebba4cb3","type":"CategoricalTicker"}},"id":"b9ad7f3d-3788-4331-81a6-8cfb4800dca5","type":"CategoricalAxis"},{"attributes":{"sizing_mode":"scale_width","toolbar_location":"above","tools":[{"id":"027222d5-43a4-451d-aab2-7ba11efee555","type":"HoverTool"},{"id":"70184ff7-dbbd-4e71-a61a-ff5a6caf43f1","type":"SaveTool"},{"id":"05945d91-5d7f-4721-942c-e7b856d4ef34","type":"PanTool"},{"id":"be2fe482-82aa-4548-ae3d-83f811e5ed22","type":"WheelZoomTool"},{"id":"143bf9ab-72b0-494f-802b-c4e2dda2ea33","type":"BoxZoomTool"},{"id":"a627cfeb-839b-4628-b91a-6d4021e3f369","type":"ResetTool"},{"id":"f7e06e99-b5af-45b5-b62d-efeb8a41c898","type":"HoverTool"},{"id":"22810291-b3aa-4fd4-b803-1f4cc956ba73","type":"SaveTool"},{"id":"f40bdbaa-a634-4ea7-9cf7-20a4a68fc552","type":"PanTool"},{"id":"a92e13c9-909d-4952-86d2-2a87ca69b5e7","type":"WheelZoomTool"},{"id":"2999d605-09f5-4ef9-8585-fc96b3e14153","type":"BoxZoomTool"},{"id":"697881c6-6e02-46c6-975f-d507b21bd762","type":"ResetTool"}]},"id":"e03d0327-7b11-424c-b299-fa33f972b5c2","type":"ToolbarBox"},{"attributes":{},"id":"b12d0849-5a1b-4ec8-a1e9-e69eafd0cd68","type":"CategoricalTickFormatter"},{"attributes":{},"id":"a92e13c9-909d-4952-86d2-2a87ca69b5e7","type":"WheelZoomTool"},{"attributes":{"fill_color":{"field":"zvalues","transform":{"id":"3ac083e9-a199-485d-9ca5-57f4b8ebd653","type":"LinearColorMapper"}},"height":{"units":"data","value":1},"line_alpha":{"value":0},"line_color":{"value":"#1f77b4"},"width":{"units":"data","value":1},"x":{"field":"District"},"y":{"field":"Location_Description"}},"id":"9a90645a-ff13-42c2-a5f3-88656577ee95","type":"Rect"},{"attributes":{"background_fill_color":{"value":"white"},"below":[{"id":"42c93650-5bde-4af3-8128-ddbac3024248","type":"CategoricalAxis"}],"left":[{"id":"b9ad7f3d-3788-4331-81a6-8cfb4800dca5","type":"CategoricalAxis"}],"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":294,"plot_width":539,"renderers":[{"id":"42c93650-5bde-4af3-8128-ddbac3024248","type":"CategoricalAxis"},{"id":"045747ae-34d2-4577-999b-9adeb5ec6789","type":"Grid"},{"id":"b9ad7f3d-3788-4331-81a6-8cfb4800dca5","type":"CategoricalAxis"},{"id":"39087b1c-25a1-40ab-9b2a-9ec871813ab4","type":"Grid"},{"id":"0ca7b492-411e-452b-83e7-d5bd9a2e2d9d","type":"BoxAnnotation"},{"id":"37b2cc74-e7f2-434e-b188-712c6f4c3acb","type":"GlyphRenderer"},{"id":"c9101b98-049a-4d38-952d-d864413eb31a","type":"ColorBar"}],"right":[{"id":"c9101b98-049a-4d38-952d-d864413eb31a","type":"ColorBar"}],"title":{"id":"dc070373-fc14-45ae-8b5a-e289b069e258","type":"Title"},"toolbar":{"id":"62e1c378-2c07-401b-bd7c-68faf65c5cf5","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"1a59c0d7-ee9b-4eda-b477-3c66db606ec0","type":"FactorRange"},"x_scale":{"id":"5e6347f5-c565-4a91-8642-337b2cadc7e8","type":"CategoricalScale"},"y_range":{"id":"8effaf61-8a26-4ecd-aba6-599a9956fe53","type":"FactorRange"},"y_scale":{"id":"b12fea4d-90ce-4b44-a3fe-4e55d5705c0a","type":"CategoricalScale"}},"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"},{"attributes":{"fill_alpha":{"value":0.1},"fill_color":{"field":"zvalues","transform":{"id":"3ac083e9-a199-485d-9ca5-57f4b8ebd653","type":"LinearColorMapper"}},"height":{"units":"data","value":1},"line_alpha":{"value":0},"line_color":{"value":"#1f77b4"},"width":{"units":"data","value":1},"x":{"field":"District"},"y":{"field":"Location_Description"}},"id":"7a6ed3c4-3091-4a96-96fb-f6f30d541e67","type":"Rect"},{"attributes":{"callback":null,"factors":["RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET"]},"id":"c535850e-a326-42bb-93dd-300df4801abf","type":"FactorRange"},{"attributes":{"bar_line_color":{"value":"black"},"color_mapper":{"id":"3ac083e9-a199-485d-9ca5-57f4b8ebd653","type":"LinearColorMapper"},"formatter":{"id":"45f4e436-9551-43f5-99a4-5fcfdf72a679","type":"BasicTickFormatter"},"label_standoff":8,"location":[0,0],"major_tick_line_color":{"value":"black"},"plot":{"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"},"ticker":{"id":"28b093e3-a4bb-431b-8c01-052797abb09e","type":"BasicTicker"}},"id":"c9101b98-049a-4d38-952d-d864413eb31a","type":"ColorBar"},{"attributes":{"data_source":{"id":"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb","type":"ColumnDataSource"},"glyph":{"id":"9a90645a-ff13-42c2-a5f3-88656577ee95","type":"Rect"},"hover_glyph":null,"muted_glyph":null,"nonselection_glyph":{"id":"7a6ed3c4-3091-4a96-96fb-f6f30d541e67","type":"Rect"},"selection_glyph":null,"view":{"id":"6e539cc6-032a-43d4-8352-9cf6eb5c912a","type":"CDSView"}},"id":"37b2cc74-e7f2-434e-b188-712c6f4c3acb","type":"GlyphRenderer"},{"attributes":{"callback":null,"factors":["2","3","4","6","7","8","9","10","11","12","25"]},"id":"9a93283c-c585-4812-b8fd-2a4d6a25a942","type":"FactorRange"},{"attributes":{"source":{"id":"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb","type":"ColumnDataSource"}},"id":"6e539cc6-032a-43d4-8352-9cf6eb5c912a","type":"CDSView"},{"attributes":{"high":0.02290584848812029,"low":0.00017258922476526576,"nan_color":"white","palette":["#ffffcc","#fffeca","#fffdc9","#fffdc7","#fffcc6","#fffcc5","#fffbc3","#fffbc2","#fffac0","#fff9bf","#fff9be","#fff8bc","#fff8bb","#fff7ba","#fff7b8","#fff6b7","#fff5b5","#fff5b4","#fff4b3","#fff4b1","#fff3b0","#fff3af","#fff2ad","#fff2ac","#fff1aa","#fff0a9","#fff0a8","#ffefa6","#ffefa5","#ffeea3","#ffeea2","#ffeda1","#feec9f","#feec9e","#feeb9d","#feeb9b","#feea9a","#fee999","#fee997","#fee896","#fee795","#fee793","#fee692","#fee691","#fee590","#fee48e","#fee48d","#fee38c","#fee28a","#fee289","#fee188","#fee186","#fee085","#fedf84","#fedf82","#fede81","#fedd80","#fedd7e","#fedc7d","#fedb7c","#fedb7a","#feda79","#feda78","#fed976","#fed875","#fed774","#fed673","#fed571","#fed370","#fed26f","#fed16d","#fed06c","#fece6b","#fecd69","#fecc68","#fecb67","#feca65","#fec864","#fec763","#fec661","#fec560","#fec35f","#fec25d","#fec15c","#fec05b","#febf5a","#febd58","#febc57","#febb56","#feba54","#feb853","#feb752","#feb650","#feb54f","#feb34e","#feb24c","#fdb14b","#fdb04b","#fdaf4a","#fdae4a","#fdac49","#fdab49","#fdaa48","#fda948","#fda847","#fda747","#fda546","#fda446","#fda345","#fda245","#fda144","#fda044","#fd9e43","#fd9d43","#fd9c42","#fd9b42","#fd9a41","#fd9941","#fd9840","#fd9640","#fd953f","#fd943f","#fd933e","#fd923e","#fd913d","#fd8f3d","#fd8e3c","#fd8d3c","#fc8c3b","#fc8a3b","#fc883a","#fc863a","#fc8439","#fc8238","#fc8038","#fc7e37","#fc7c37","#fc7a36","#fc7836","#fc7635","#fc7434","#fc7234","#fc7033","#fc6e33","#fc6c32","#fc6a32","#fc6831","#fc6630","#fc6430","#fc622f","#fc602f","#fc5e2e","#fc5c2e","#fc5a2d","#fc582d","#fc562c","#fc542b","#fc522b","#fc502a","#fc4e2a","#fb4c29","#fa4b29","#f94928","#f94828","#f84627","#f74427","#f64327","#f64126","#f53f26","#f43e25","#f33c25","#f23b24","#f23924","#f13724","#f03623","#ef3423","#ee3222","#ee3122","#ed2f21","#ec2d21","#eb2c20","#eb2a20","#ea2920","#e9271f","#e8251f","#e7241e","#e7221e","#e6201d","#e51f1d","#e41d1c","#e31c1c","#e31a1c","#e2191c","#e0181c","#df171c","#de161d","#dd161d","#dc151d","#da141e","#d9131e","#d8121e","#d7121f","#d6111f","#d4101f","#d30f20","#d20e20","#d10d20","#d00d20","#cf0c21","#cd0b21","#cc0a21","#cb0922","#ca0922","#c90822","#c70723","#c60623","#c50523","#c40424","#c30424","#c10324","#c00225","#bf0125","#be0025","#bd0025","#bb0026","#b90026","#b70026","#b50026","#b30026","#b10026","#af0026","#ad0026","#ac0026","#aa0026","#a80026","#a60026","#a40026","#a20026","#a00026","#9e0026","#9c0026","#9a0026","#980026","#960026","#950026","#930026","#910026","#8f0026","#8d0026","#8b0026","#890026","#870026","#850026","#830026","#810026","#800026"]},"id":"fe003890-c305-4e2b-b604-33004a2d681f","type":"LinearColorMapper"},{"attributes":{"callback":null,"renderers":[{"id":"50caf0d7-9965-4f57-98f4-28c119fe6472","type":"GlyphRenderer"}],"tooltips":[["District","@{District}"],["Location Description","@{Location_Description}"],["Year Frequency","@{Year_Frequency}"],["Frequency","@{Frequency}"]]},"id":"027222d5-43a4-451d-aab2-7ba11efee555","type":"HoverTool"},{"attributes":{},"id":"c8940d54-c290-471a-b270-061cc3712e02","type":"CategoricalTickFormatter"},{"attributes":{"children":[{"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},{"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"}]},"id":"fb2cb973-5e24-401f-99eb-02330d9e1d32","type":"Row"},{"attributes":{},"id":"28b093e3-a4bb-431b-8c01-052797abb09e","type":"BasicTicker"},{"attributes":{"text":"<span style='font-size: 16pt'><b>Year: 2001</b></font>"},"id":"90caee0e-bf3b-457e-96bb-1e20dcb24830","type":"Div"},{"attributes":{"plot":null,"text":"Crime Frequency For Year","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"e9ab70e5-570d-42e8-afa6-82db57d91691","type":"Title"},{"attributes":{"overlay":{"id":"0ca7b492-411e-452b-83e7-d5bd9a2e2d9d","type":"BoxAnnotation"}},"id":"2999d605-09f5-4ef9-8585-fc96b3e14153","type":"BoxZoomTool"},{"attributes":{"axis_label":"Location Description","bounds":"auto","formatter":{"id":"864f85e1-0421-411d-864c-ae5ac2ff054f","type":"CategoricalTickFormatter"},"major_label_orientation":"horizontal","plot":{"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},"ticker":{"id":"584b7018-13ea-4deb-8c41-5645d3b9e8c7","type":"CategoricalTicker"}},"id":"0a32bc2c-424a-4f1e-94e9-e81b89a908f9","type":"CategoricalAxis"},{"attributes":{},"id":"697881c6-6e02-46c6-975f-d507b21bd762","type":"ResetTool"},{"attributes":{},"id":"b34cb9c2-35ad-43ed-9a35-3316a90df9c7","type":"CategoricalScale"},{"attributes":{"fill_color":{"field":"zvalues","transform":{"id":"fe003890-c305-4e2b-b604-33004a2d681f","type":"LinearColorMapper"}},"height":{"units":"data","value":1},"line_alpha":{"value":0},"line_color":{"value":"#1f77b4"},"width":{"units":"data","value":1},"x":{"field":"District"},"y":{"field":"Location_Description"}},"id":"5eb2b495-8d60-4f8b-968a-f19a688444cc","type":"Rect"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_scroll":"auto","active_tap":"auto","tools":[{"id":"027222d5-43a4-451d-aab2-7ba11efee555","type":"HoverTool"},{"id":"70184ff7-dbbd-4e71-a61a-ff5a6caf43f1","type":"SaveTool"},{"id":"05945d91-5d7f-4721-942c-e7b856d4ef34","type":"PanTool"},{"id":"be2fe482-82aa-4548-ae3d-83f811e5ed22","type":"WheelZoomTool"},{"id":"143bf9ab-72b0-494f-802b-c4e2dda2ea33","type":"BoxZoomTool"},{"id":"a627cfeb-839b-4628-b91a-6d4021e3f369","type":"ResetTool"}]},"id":"1d5848e2-5696-4fcb-9ffc-243d6ce2c8f9","type":"Toolbar"},{"attributes":{"children":[{"id":"e03d0327-7b11-424c-b299-fa33f972b5c2","type":"ToolbarBox"},{"id":"bb1078e6-ed78-443b-bf65-9e55f6bfd5b6","type":"Column"}]},"id":"28061b19-42b0-4390-bb7c-2a2210f66802","type":"Column"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"plot":null,"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"0ca7b492-411e-452b-83e7-d5bd9a2e2d9d","type":"BoxAnnotation"},{"attributes":{},"id":"97d31ca3-3e86-4bd3-aa9b-65ef2cfde75a","type":"CategoricalScale"},{"attributes":{"grid_line_color":{"value":null},"plot":{"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},"ticker":{"id":"7d4b03eb-58d3-4e22-ba01-66c2cc155b74","type":"CategoricalTicker"}},"id":"bad89907-5dc3-448d-b56f-df4af7f17d95","type":"Grid"},{"attributes":{"children":[{"id":"90caee0e-bf3b-457e-96bb-1e20dcb24830","type":"Div"}]},"id":"fec652d0-2bdf-4800-ab20-bad73aec920e","type":"WidgetBox"},{"attributes":{"axis_label":"District","bounds":"auto","formatter":{"id":"187739db-7a21-4105-9fca-7cd8939797c5","type":"CategoricalTickFormatter"},"major_label_orientation":"horizontal","plot":{"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},"ticker":{"id":"7d4b03eb-58d3-4e22-ba01-66c2cc155b74","type":"CategoricalTicker"}},"id":"0754f7fd-7633-4128-8cf8-329c573c2bd5","type":"CategoricalAxis"},{"attributes":{},"id":"f40bdbaa-a634-4ea7-9cf7-20a4a68fc552","type":"PanTool"},{"attributes":{},"id":"7d4b03eb-58d3-4e22-ba01-66c2cc155b74","type":"CategoricalTicker"},{"attributes":{},"id":"45f4e436-9551-43f5-99a4-5fcfdf72a679","type":"BasicTickFormatter"},{"attributes":{},"id":"584b7018-13ea-4deb-8c41-5645d3b9e8c7","type":"CategoricalTicker"},{"attributes":{"dimension":1,"grid_line_color":{"value":null},"plot":{"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},"ticker":{"id":"584b7018-13ea-4deb-8c41-5645d3b9e8c7","type":"CategoricalTicker"}},"id":"d8e6d291-4a7e-4283-bc6b-0287d08c3b0a","type":"Grid"},{"attributes":{"children":[{"id":"fec652d0-2bdf-4800-ab20-bad73aec920e","type":"WidgetBox"},{"id":"28061b19-42b0-4390-bb7c-2a2210f66802","type":"Column"}]},"id":"53d831e3-9731-47b7-beb7-c509f2b54dbb","type":"Column"},{"attributes":{"bottom_units":"screen","fill_alpha":{"value":0.5},"fill_color":{"value":"lightgrey"},"left_units":"screen","level":"overlay","line_alpha":{"value":1.0},"line_color":{"value":"black"},"line_dash":[4,4],"line_width":{"value":2},"plot":null,"render_mode":"css","right_units":"screen","top_units":"screen"},"id":"912ad592-7720-461a-b042-80ef4e33640b","type":"BoxAnnotation"},{"attributes":{},"id":"70184ff7-dbbd-4e71-a61a-ff5a6caf43f1","type":"SaveTool"},{"attributes":{},"id":"be2fe482-82aa-4548-ae3d-83f811e5ed22","type":"WheelZoomTool"},{"attributes":{"dimension":1,"grid_line_color":{"value":null},"plot":{"id":"d1110555-cda8-4f53-b8d4-52391fd2c064","subtype":"Figure","type":"Plot"},"ticker":{"id":"f128bf0b-790f-47e1-90b2-9e08ebba4cb3","type":"CategoricalTicker"}},"id":"39087b1c-25a1-40ab-9b2a-9ec871813ab4","type":"Grid"},{"attributes":{},"id":"b12fea4d-90ce-4b44-a3fe-4e55d5705c0a","type":"CategoricalScale"},{"attributes":{},"id":"f128bf0b-790f-47e1-90b2-9e08ebba4cb3","type":"CategoricalTicker"},{"attributes":{"active_drag":"auto","active_inspect":"auto","active_scroll":"auto","active_tap":"auto","tools":[{"id":"f7e06e99-b5af-45b5-b62d-efeb8a41c898","type":"HoverTool"},{"id":"22810291-b3aa-4fd4-b803-1f4cc956ba73","type":"SaveTool"},{"id":"f40bdbaa-a634-4ea7-9cf7-20a4a68fc552","type":"PanTool"},{"id":"a92e13c9-909d-4952-86d2-2a87ca69b5e7","type":"WheelZoomTool"},{"id":"2999d605-09f5-4ef9-8585-fc96b3e14153","type":"BoxZoomTool"},{"id":"697881c6-6e02-46c6-975f-d507b21bd762","type":"ResetTool"}]},"id":"62e1c378-2c07-401b-bd7c-68faf65c5cf5","type":"Toolbar"},{"attributes":{"children":[{"id":"fb2cb973-5e24-401f-99eb-02330d9e1d32","type":"Row"}]},"id":"bb1078e6-ed78-443b-bf65-9e55f6bfd5b6","type":"Column"},{"attributes":{"callback":null,"factors":["2","3","4","6","7","8","9","10","11","12","25"]},"id":"1a59c0d7-ee9b-4eda-b477-3c66db606ec0","type":"FactorRange"},{"attributes":{},"id":"5e6347f5-c565-4a91-8642-337b2cadc7e8","type":"CategoricalScale"},{"attributes":{"callback":null,"column_names":["District","Location_Description","zvalues","Year_Frequency","Frequency"],"data":{"District":["2","2","2","2","2","2","2","3","3","3","3","3","3","3","4","4","4","4","4","4","4","6","6","6","6","6","6","6","7","7","7","7","7","7","7","8","8","8","8","8","8","8","9","9","9","9","9","9","9","10","10","10","10","10","10","10","11","11","11","11","11","11","11","12","12","12","12","12","12","12","25","25","25","25","25","25","25"],"Frequency":["110","1039","1467","1605","2516","5178","11344","197","611","975","1955","4723","5283","8502","636","714","1080","1347","2089","8150","9226","588","895","1116","917","2351","7230","9691","257","495","1003","2160","2798","8190","9925","1975","2163","1772","1025","1182","8617","10271","839","1008","1238","760","1096","6489","10271","375","599","737","2488","1245","4496","7223","175","507","900","4306","1470","5630","11826","464","932","1462","1567","1234","3852","10325","1162","1404","1445","2034","1613","7130","11017"],"Location_Description":["RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET"],"Year_Frequency":["0.00019349","0.0018276","0.0025804","0.0028231","0.0044255","0.0091079","0.019954","0.00034652","0.0010747","0.001715","0.0034388","0.0083076","0.0092926","0.014955","0.0011187","0.0012559","0.0018997","0.0023693","0.0036745","0.014336","0.016228","0.0010343","0.0015743","0.001963","0.001613","0.0041353","0.012717","0.017046","0.00045205","0.00087069","0.0017642","0.0037994","0.0049216","0.014406","0.017458","0.003474","0.0038046","0.0031169","0.0018029","0.0020791","0.015157","0.018066","0.0014758","0.001773","0.0021776","0.0013368","0.0019278","0.011414","0.018066","0.00065961","0.0010536","0.0012964","0.0043763","0.0021899","0.0079083","0.012705","0.00030782","0.00089179","0.0015831","0.0075741","0.0025857","0.009903","0.020801","0.00081616","0.0016394","0.0025716","0.0027563","0.0021706","0.0067755","0.018161","0.0020439","0.0024696","0.0025417","0.0035777","0.0028372","0.012541","0.019378"],"zvalues":{"__ndarray__":"nJ4r305cKT9Xz6yhWfFdP1BSSoF8I2U/6q+y1YogZz8U8clWhiByP1Ddx5cqp4I/3HP8DbxulD/PIUsZkbU2Pw36xEC6m1E/6pm3qC4ZXD8ALnFWoCtsP1b0iWeQA4E/xSbWZ/8Hgz8qzg+UkaCOP+zCBAorVFI/CZxvaZ+TVD+R5Skp1R9fPzpw5DfUaGM/7uERU+0Zbj9vOecI9FuNP9tFDSwfnpA/2tpMzwryUD8hF4Xx+MpZP8/pmaq2FGA/f2EZt0dtWj+l5VOkMvBwP2+djtGGC4o/Xp+ar4h0kT8oquI+MqA9P28SEbvYh0w/SeGidcHnXD+R5Skp1R9vP+4NCK2lKHQ/nGFaZNeAjT8TqH6BbuCRP1l+Vw1ndWw/0aT/KuYqbz+em4LmkohpP6crNzsQil0/W1n40iwIYT+q4fo6nwqPP6GCnQb5f5I/YoiuV9MtWD92CRbRpAxdP7ug45+/1mE/b9pfTP7mVT/sMmfn35VfP527P6AsYIc/oYKdBvl/kj8WinmVN51FPwkAFzIyQ1E/PLvn2k49VT88H4+j4exxP6cJgfmR8GE/Jj0pWjkygD80Qyc7EgWKP1n4+QJWLDQ/eAZt2Og4TT9OP/hM3O9ZP6V8jM8CBn8/kREgg40uZT96VpCHAEiEP4LfK0j8TJU/robjGW++Sj8E2nLJ8dtaPzq+kNMKEWU/DeTJE16UZj8Q9xtI/sdhP+WfCZqmwHs/8nC+St+Ykj8CCRIcZr5gPwSiwVoXO2Q/IS2AHlXSZD/5hBjcCk9tP0EDQoUNPmc/ALnubE6viT8NJvxU9NeTPw==","dtype":"float64","shape":[77]}}},"id":"df04abae-2572-4fab-9638-eb34f1c16941","type":"ColumnDataSource"},{"attributes":{"callback":null,"factors":["RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET"]},"id":"8effaf61-8a26-4ecd-aba6-599a9956fe53","type":"FactorRange"},{"attributes":{},"id":"22810291-b3aa-4fd4-b803-1f4cc956ba73","type":"SaveTool"},{"attributes":{},"id":"a627cfeb-839b-4628-b91a-6d4021e3f369","type":"ResetTool"},{"attributes":{"plot":null,"text":"Crime Frequency Over All Years","text_color":{"value":"black"},"text_font_size":{"value":"12pt"}},"id":"dc070373-fc14-45ae-8b5a-e289b069e258","type":"Title"},{"attributes":{"callback":null,"column_names":["District","Location_Description","zvalues","Frequency","Year_Frequency"],"data":{"District":["2","2","2","2","2","2","2","3","3","3","3","3","3","3","4","4","4","4","4","4","4","6","6","6","6","6","6","6","7","7","7","7","7","7","7","8","8","8","8","8","8","8","9","9","9","9","9","9","9","10","10","10","10","10","10","10","11","11","11","11","11","11","11","12","12","12","12","12","12","12","25","25","25","25","25","25","25"],"Frequency":["110","1039","1467","1605","2516","5178","11344","197","611","975","1955","4723","5283","8502","636","714","1080","1347","2089","8150","9226","588","895","1116","917","2351","7230","9691","257","495","1003","2160","2798","8190","9925","1975","2163","1772","1025","1182","8617","10271","839","1008","1238","760","1096","6489","10271","375","599","737","2488","1245","4496","7223","175","507","900","4306","1470","5630","11826","464","932","1462","1567","1234","3852","10325","1162","1404","1445","2034","1613","7130","11017"],"Location_Description":["RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET","RESIDENCE-GARAGE","PARKING LOT/GARAGE(NON.RESID.)","OTHER","SIDEWALK","APARTMENT","RESIDENCE","STREET"],"Year_Frequency":["0.00019349","0.0018276","0.0025804","0.0028231","0.0044255","0.0091079","0.019954","0.00034652","0.0010747","0.001715","0.0034388","0.0083076","0.0092926","0.014955","0.0011187","0.0012559","0.0018997","0.0023693","0.0036745","0.014336","0.016228","0.0010343","0.0015743","0.001963","0.001613","0.0041353","0.012717","0.017046","0.00045205","0.00087069","0.0017642","0.0037994","0.0049216","0.014406","0.017458","0.003474","0.0038046","0.0031169","0.0018029","0.0020791","0.015157","0.018066","0.0014758","0.001773","0.0021776","0.0013368","0.0019278","0.011414","0.018066","0.00065961","0.0010536","0.0012964","0.0043763","0.0021899","0.0079083","0.012705","0.00030782","0.00089179","0.0015831","0.0075741","0.0025857","0.009903","0.020801","0.00081616","0.0016394","0.0025716","0.0027563","0.0021706","0.0067755","0.018161","0.0020439","0.0024696","0.0025417","0.0035777","0.0028372","0.012541","0.019378"],"zvalues":{"__ndarray__":"AAAAAACAW0AAAAAAADyQQAAAAAAA7JZAAAAAAAAUmUAAAAAAAKijQAAAAAAAOrRAAAAAAAAoxkAAAAAAAKBoQAAAAAAAGINAAAAAAAB4jkAAAAAAAIyeQAAAAAAAc7JAAAAAAACjtEAAAAAAAJvAQAAAAAAA4INAAAAAAABQhkAAAAAAAOCQQAAAAAAADJVAAAAAAABSoEAAAAAAANa/QAAAAAAABcJAAAAAAABggkAAAAAAAPiLQAAAAAAAcJFAAAAAAACojEAAAAAAAF6iQAAAAAAAPrxAAAAAAIDtwkAAAAAAABBwQAAAAAAA8H5AAAAAAABYj0AAAAAAAOCgQAAAAAAA3KVAAAAAAAD+v0AAAAAAgGLDQAAAAAAA3J5AAAAAAADmoEAAAAAAALCbQAAAAAAABJBAAAAAAAB4kkAAAAAAgNTAQAAAAACAD8RAAAAAAAA4ikAAAAAAAICPQAAAAAAAWJNAAAAAAADAh0AAAAAAACCRQAAAAAAAWblAAAAAAIAPxEAAAAAAAHB3QAAAAAAAuIJAAAAAAAAIh0AAAAAAAHCjQAAAAAAAdJNAAAAAAACQsUAAAAAAADe8QAAAAAAA4GVAAAAAAACwf0AAAAAAACCMQAAAAAAA0rBAAAAAAAD4lkAAAAAAAP61QAAAAAAAGcdAAAAAAAAAfUAAAAAAACCNQAAAAAAA2JZAAAAAAAB8mEAAAAAAAEiTQAAAAAAAGK5AAAAAAIAqxEAAAAAAACiSQAAAAAAA8JVAAAAAAACUlkAAAAAAAMifQAAAAAAANJlAAAAAAADau0AAAAAAgITFQA==","dtype":"float64","shape":[77]}}},"id":"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb","type":"ColumnDataSource"},{"attributes":{},"id":"187739db-7a21-4105-9fca-7cd8939797c5","type":"CategoricalTickFormatter"},{"attributes":{},"id":"1dcd6a8e-d93e-4198-a09a-fdb3a96a8dbf","type":"BasicTicker"},{"attributes":{"bar_line_color":{"value":"black"},"color_mapper":{"id":"fe003890-c305-4e2b-b604-33004a2d681f","type":"LinearColorMapper"},"formatter":{"id":"453ba3a0-025b-4d7d-a806-9e6803b9a85b","type":"BasicTickFormatter"},"label_standoff":8,"location":[0,0],"major_tick_line_color":{"value":"black"},"plot":{"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},"ticker":{"id":"1dcd6a8e-d93e-4198-a09a-fdb3a96a8dbf","type":"BasicTicker"}},"id":"de11e389-55f9-4a47-9da9-4f732ee6a9cb","type":"ColorBar"},{"attributes":{"data_source":{"id":"df04abae-2572-4fab-9638-eb34f1c16941","type":"ColumnDataSource"},"glyph":{"id":"5eb2b495-8d60-4f8b-968a-f19a688444cc","type":"Rect"},"hover_glyph":null,"muted_glyph":null,"nonselection_glyph":{"id":"db19c101-376c-42ff-8870-868645f08b59","type":"Rect"},"selection_glyph":null,"view":{"id":"ab8c9ca4-4c26-454c-b5ab-084ee13fa632","type":"CDSView"}},"id":"50caf0d7-9965-4f57-98f4-28c119fe6472","type":"GlyphRenderer"},{"attributes":{"callback":null,"renderers":[{"id":"37b2cc74-e7f2-434e-b188-712c6f4c3acb","type":"GlyphRenderer"}],"tooltips":[["District","@{District}"],["Location Description","@{Location_Description}"],["Frequency","@{Frequency}"],["Year Frequency","@{Year_Frequency}"]]},"id":"f7e06e99-b5af-45b5-b62d-efeb8a41c898","type":"HoverTool"},{"attributes":{"source":{"id":"df04abae-2572-4fab-9638-eb34f1c16941","type":"ColumnDataSource"}},"id":"ab8c9ca4-4c26-454c-b5ab-084ee13fa632","type":"CDSView"},{"attributes":{},"id":"5f194eac-1ef3-42c6-a1f6-0e2724f0af10","type":"CategoricalTicker"},{"attributes":{"background_fill_color":{"value":"white"},"below":[{"id":"0754f7fd-7633-4128-8cf8-329c573c2bd5","type":"CategoricalAxis"}],"left":[{"id":"0a32bc2c-424a-4f1e-94e9-e81b89a908f9","type":"CategoricalAxis"}],"min_border_bottom":10,"min_border_left":10,"min_border_right":10,"min_border_top":10,"plot_height":294,"plot_width":539,"renderers":[{"id":"0754f7fd-7633-4128-8cf8-329c573c2bd5","type":"CategoricalAxis"},{"id":"bad89907-5dc3-448d-b56f-df4af7f17d95","type":"Grid"},{"id":"0a32bc2c-424a-4f1e-94e9-e81b89a908f9","type":"CategoricalAxis"},{"id":"d8e6d291-4a7e-4283-bc6b-0287d08c3b0a","type":"Grid"},{"id":"912ad592-7720-461a-b042-80ef4e33640b","type":"BoxAnnotation"},{"id":"50caf0d7-9965-4f57-98f4-28c119fe6472","type":"GlyphRenderer"},{"id":"de11e389-55f9-4a47-9da9-4f732ee6a9cb","type":"ColorBar"}],"right":[{"id":"de11e389-55f9-4a47-9da9-4f732ee6a9cb","type":"ColorBar"}],"title":{"id":"e9ab70e5-570d-42e8-afa6-82db57d91691","type":"Title"},"toolbar":{"id":"1d5848e2-5696-4fcb-9ffc-243d6ce2c8f9","type":"Toolbar"},"toolbar_location":null,"x_range":{"id":"9a93283c-c585-4812-b8fd-2a4d6a25a942","type":"FactorRange"},"x_scale":{"id":"b34cb9c2-35ad-43ed-9a35-3316a90df9c7","type":"CategoricalScale"},"y_range":{"id":"c535850e-a326-42bb-93dd-300df4801abf","type":"FactorRange"},"y_scale":{"id":"97d31ca3-3e86-4bd3-aa9b-65ef2cfde75a","type":"CategoricalScale"}},"id":"8638faef-0136-452e-8ba5-0b89c5e69971","subtype":"Figure","type":"Plot"},{"attributes":{"fill_alpha":{"value":0.1},"fill_color":{"field":"zvalues","transform":{"id":"fe003890-c305-4e2b-b604-33004a2d681f","type":"LinearColorMapper"}},"height":{"units":"data","value":1},"line_alpha":{"value":0},"line_color":{"value":"#1f77b4"},"width":{"units":"data","value":1},"x":{"field":"District"},"y":{"field":"Location_Description"}},"id":"db19c101-376c-42ff-8870-868645f08b59","type":"Rect"},{"attributes":{},"id":"864f85e1-0421-411d-864c-ae5ac2ff054f","type":"CategoricalTickFormatter"}],"root_ids":["53d831e3-9731-47b7-beb7-c509f2b54dbb"]},"title":"Bokeh Application","version":"0.12.10"}};
+    var render_items = [{"docid":"ffb37918-39a3-45d5-a43a-d58ca223ed86","elementid":"2a4d533a-7f96-4e08-979a-f65b52826c42","modelid":"53d831e3-9731-47b7-beb7-c509f2b54dbb"}];
+
+    root.Bokeh.embed.embed_items(docs_json, render_items);
+  }
+
+  if (root.Bokeh !== undefined) {
+    embed_document(root);
+  } else {
+    var attempts = 0;
+    var timer = setInterval(function(root) {
+      if (root.Bokeh !== undefined) {
+        embed_document(root);
+        clearInterval(timer);
+      }
+      attempts++;
+      if (attempts > 100) {
+        console.log("Bokeh: ERROR: Unable to embed document because BokehJS library is missing")
+        clearInterval(timer);
+      }
+    }, 10, root)
+  }
+})(window);
+</script>
+</div>
+      
+    </div>
+  </div>
+  <div class="holowidgets" id="widget_area5017f04d6e3e4a8f83c7893b6f69d297">
+    <form class="holoform well" id="form5017f04d6e3e4a8f83c7893b6f69d297">
+      
+      
+      <div class="form-group control-group holoformgroup" style=''>
+        <label for="textInput5017f04d6e3e4a8f83c7893b6f69d297_Year">
+          <strong>Year:</strong>
+        </label>
+        <div class="holowell row row-fluid">
+          <div class="hologroup">
+            <input type="text" class="holotext form-control input-small"
+                   id="textInput5017f04d6e3e4a8f83c7893b6f69d297_Year" value="" readonly>
+          </div>
+          <div class="holoslider"
+               id="_anim_widget5017f04d6e3e4a8f83c7893b6f69d297_Year"></div>
+        </div>
+      </div>
+	  <script>
+	    function init_slider() {
+        // Slider JS Block START
+        function loadcssfile(filename){
+            var fileref=document.createElement("link")
+            fileref.setAttribute("rel", "stylesheet")
+            fileref.setAttribute("type", "text/css")
+            fileref.setAttribute("href", filename)
+            document.getElementsByTagName("head")[0].appendChild(fileref)
+        }
+        loadcssfile("https://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css");
+        /* Check if jQuery and jQueryUI have been loaded
+           otherwise load with require.js */
+        var jQuery = window.jQuery,
+            // check for old versions of jQuery
+            oldjQuery = jQuery && !!jQuery.fn.jquery.match(/^1\.[0-4](\.|$)/),
+            jquery_path = '',
+            paths = {},
+            noConflict;
+        var jQueryUI = jQuery.ui;
+        // check for jQuery
+        if (!jQuery || oldjQuery) {
+            // load if it's not available or doesn't meet min standards
+            paths.jQuery = jQuery;
+            noConflict = !!oldjQuery;
+        } else {
+            // register the current jQuery
+            define('jquery', [], function() { return jQuery; });
+        }
+        if (!jQueryUI) {
+            paths.jQueryUI = "https://code.jquery.com/ui/1.10.4/jquery-ui.min"
+        } else {
+            define('jQueryUI', [], function() { return jQuery.ui; });
+        }
+        paths.underscore = "https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min";
+        var jquery_require = {
+            paths: paths,
+            shim: {
+                "jQueryUI": {
+                    exports:"$",
+                    deps: ['jquery']
+                },
+                "underscore": {
+                    exports: '_'
+                }
+            }
+        }
+        require.config(jquery_require);
+        require(["jQueryUI", "underscore"], function(jUI, _){
+            if (noConflict) $.noConflict(true);
+            var vals = ['2001.0', '2002.0', '2003.0', '2004.0'];
+            var next_vals = {};
+            if (false && vals.constructor === Array) {
+                var min = parseFloat(vals[0]);
+                var max = parseFloat(vals[vals.length-1]);
+                var step = 1;
+                var labels = [min];
+            } else {
+                var min = 0;
+                if (false) {
+                    var max = Object.keys(vals).length - 1;
+                } else {
+                    var max = vals.length - 1;
+                }
+                var step = 1;
+				var labels = ['2001', '2002', '2003', '2004'];
+            }
+			function adjustFontSize(text) {
+				var width_ratio = (text.parent().width()/8)/text.val().length;
+				var size = Math.min(0.9, Math.max(0.6, width_ratio))+'em';
+				text.css('font-size', size);
+			}
+            var slider = $('#_anim_widget5017f04d6e3e4a8f83c7893b6f69d297_Year');
+			slider.slider({
+                animate: "fast",
+                min: min,
+                max: max,
+                step: step,
+                value: min,
+                dim_vals: vals,
+                dim_labels: labels,
+                next_vals: next_vals,
+                slide: function(event, ui) {
+                    var vals = slider.slider("option", "dim_vals");
+                    var next_vals = slider.slider("option", "next_vals");
+                    var labels = slider.slider("option", "dim_labels");
+                    if (false) {
+					    var dim_val = ui.value;
+					    if (vals.constructor === Array) {
+						   var label = ui.value;
+						} else {
+						   var label = labels[ui.value];
+						}
+                    } else {
+                        var dim_val = vals[ui.value];
+						var label = labels[ui.value];
+                    }
+					var text = $('#textInput5017f04d6e3e4a8f83c7893b6f69d297_Year');
+					text.val(label);
+					adjustFontSize(text);
+                    anim5017f04d6e3e4a8f83c7893b6f69d297.set_frame(dim_val, 0);
+                    if (Object.keys(next_vals).length > 0) {
+                        var new_vals = next_vals[dim_val];
+                        var next_widget = $('#_anim_widget5017f04d6e3e4a8f83c7893b6f69d297_');
+                        update_widget(next_widget, new_vals);
+                    }
+                }
+            });
+            slider.keypress(function(event) {
+                if (event.which == 80 || event.which == 112) {
+                    var start = slider.slider("option", "value");
+                    var stop =  slider.slider("option", "max");
+                    for (var i=start; i<=stop; i++) {
+                        var delay = i*200;
+                        $.proxy(function doSetTimeout(i) { setTimeout($.proxy(function() {
+                            var val = {value:i};
+                            slider.slider('value',i);
+                            slider.slider("option", "slide")(null, val);
+                        }, slider), delay);}, slider)(i);
+                    }
+                }
+                if (event.which == 82 || event.which == 114) {
+                    var start = slider.slider("option", "value");
+                    var stop =  slider.slider("option", "min");
+                    var count = 0;
+                    for (var i=start; i>=stop; i--) {
+                        var delay = count*200;
+                        count = count + 1;
+                        $.proxy(function doSetTimeout(i) { setTimeout($.proxy(function() {
+                            var val = {value:i};
+                            slider.slider('value',i);
+                            slider.slider("option", "slide")(null, val);
+                        }, slider), delay);}, slider)(i);
+                    }
+                }
+            });
+			var textInput = $('#textInput5017f04d6e3e4a8f83c7893b6f69d297_Year')
+			textInput.val(labels[0]);
+			adjustFontSize(textInput);
+        });
+		}
+        $(document).ready(init_slider)
+        // Slider JS Block END
+        </script>
+        
+        
+        </form>
+    </div>
+</div>
+
+
+<script language="javascript">
+/* Instantiate the BokehSelectionWidget class. */
+/* The IDs given should match those used in the template above. */
+(function() {
+	if (jQuery.ui !== undefined) {
+		$("#display_area5017f04d6e3e4a8f83c7893b6f69d297").resizable({
+			resize: function(event, ui) {
+				$("#widget_area5017f04d6e3e4a8f83c7893b6f69d297").width($(this).parent().width()-ui.size.width);
+			}
+		});
+		$("#widget_area5017f04d6e3e4a8f83c7893b6f69d297").resizable();
+	}
+    var widget_ids = new Array(1);
+    
+    widget_ids[0] = "_anim_widget5017f04d6e3e4a8f83c7893b6f69d297_Year";
+    
+    var frame_data = {"0": "{\"content\":{\"events\":[{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"df04abae-2572-4fab-9638-eb34f1c16941\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"110\",\"1039\",\"1467\",\"1605\",\"2516\",\"5178\",\"11344\",\"197\",\"611\",\"975\",\"1955\",\"4723\",\"5283\",\"8502\",\"636\",\"714\",\"1080\",\"1347\",\"2089\",\"8150\",\"9226\",\"588\",\"895\",\"1116\",\"917\",\"2351\",\"7230\",\"9691\",\"257\",\"495\",\"1003\",\"2160\",\"2798\",\"8190\",\"9925\",\"1975\",\"2163\",\"1772\",\"1025\",\"1182\",\"8617\",\"10271\",\"839\",\"1008\",\"1238\",\"760\",\"1096\",\"6489\",\"10271\",\"375\",\"599\",\"737\",\"2488\",\"1245\",\"4496\",\"7223\",\"175\",\"507\",\"900\",\"4306\",\"1470\",\"5630\",\"11826\",\"464\",\"932\",\"1462\",\"1567\",\"1234\",\"3852\",\"10325\",\"1162\",\"1404\",\"1445\",\"2034\",\"1613\",\"7130\",\"11017\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00019349\",\"0.0018276\",\"0.0025804\",\"0.0028231\",\"0.0044255\",\"0.0091079\",\"0.019954\",\"0.00034652\",\"0.0010747\",\"0.001715\",\"0.0034388\",\"0.0083076\",\"0.0092926\",\"0.014955\",\"0.0011187\",\"0.0012559\",\"0.0018997\",\"0.0023693\",\"0.0036745\",\"0.014336\",\"0.016228\",\"0.0010343\",\"0.0015743\",\"0.001963\",\"0.001613\",\"0.0041353\",\"0.012717\",\"0.017046\",\"0.00045205\",\"0.00087069\",\"0.0017642\",\"0.0037994\",\"0.0049216\",\"0.014406\",\"0.017458\",\"0.003474\",\"0.0038046\",\"0.0031169\",\"0.0018029\",\"0.0020791\",\"0.015157\",\"0.018066\",\"0.0014758\",\"0.001773\",\"0.0021776\",\"0.0013368\",\"0.0019278\",\"0.011414\",\"0.018066\",\"0.00065961\",\"0.0010536\",\"0.0012964\",\"0.0043763\",\"0.0021899\",\"0.0079083\",\"0.012705\",\"0.00030782\",\"0.00089179\",\"0.0015831\",\"0.0075741\",\"0.0025857\",\"0.009903\",\"0.020801\",\"0.00081616\",\"0.0016394\",\"0.0025716\",\"0.0027563\",\"0.0021706\",\"0.0067755\",\"0.018161\",\"0.0020439\",\"0.0024696\",\"0.0025417\",\"0.0035777\",\"0.0028372\",\"0.012541\",\"0.019378\"],\"zvalues\":{\"__ndarray__\":\"nJ4r305cKT9Xz6yhWfFdP1BSSoF8I2U/6q+y1YogZz8U8clWhiByP1Ddx5cqp4I/3HP8DbxulD/PIUsZkbU2Pw36xEC6m1E/6pm3qC4ZXD8ALnFWoCtsP1b0iWeQA4E/xSbWZ/8Hgz8qzg+UkaCOP+zCBAorVFI/CZxvaZ+TVD+R5Skp1R9fPzpw5DfUaGM/7uERU+0Zbj9vOecI9FuNP9tFDSwfnpA/2tpMzwryUD8hF4Xx+MpZP8/pmaq2FGA/f2EZt0dtWj+l5VOkMvBwP2+djtGGC4o/Xp+ar4h0kT8oquI+MqA9P28SEbvYh0w/SeGidcHnXD+R5Skp1R9vP+4NCK2lKHQ/nGFaZNeAjT8TqH6BbuCRP1l+Vw1ndWw/0aT/KuYqbz+em4LmkohpP6crNzsQil0/W1n40iwIYT+q4fo6nwqPP6GCnQb5f5I/YoiuV9MtWD92CRbRpAxdP7ug45+/1mE/b9pfTP7mVT/sMmfn35VfP527P6AsYIc/oYKdBvl/kj8WinmVN51FPwkAFzIyQ1E/PLvn2k49VT88H4+j4exxP6cJgfmR8GE/Jj0pWjkygD80Qyc7EgWKP1n4+QJWLDQ/eAZt2Og4TT9OP/hM3O9ZP6V8jM8CBn8/kREgg40uZT96VpCHAEiEP4LfK0j8TJU/robjGW++Sj8E2nLJ8dtaPzq+kNMKEWU/DeTJE16UZj8Q9xtI/sdhP+WfCZqmwHs/8nC+St+Ykj8CCRIcZr5gPwSiwVoXO2Q/IS2AHlXSZD/5hBjcCk9tP0EDQoUNPmc/ALnubE6viT8NJvxU9NeTPw==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"110\",\"1039\",\"1467\",\"1605\",\"2516\",\"5178\",\"11344\",\"197\",\"611\",\"975\",\"1955\",\"4723\",\"5283\",\"8502\",\"636\",\"714\",\"1080\",\"1347\",\"2089\",\"8150\",\"9226\",\"588\",\"895\",\"1116\",\"917\",\"2351\",\"7230\",\"9691\",\"257\",\"495\",\"1003\",\"2160\",\"2798\",\"8190\",\"9925\",\"1975\",\"2163\",\"1772\",\"1025\",\"1182\",\"8617\",\"10271\",\"839\",\"1008\",\"1238\",\"760\",\"1096\",\"6489\",\"10271\",\"375\",\"599\",\"737\",\"2488\",\"1245\",\"4496\",\"7223\",\"175\",\"507\",\"900\",\"4306\",\"1470\",\"5630\",\"11826\",\"464\",\"932\",\"1462\",\"1567\",\"1234\",\"3852\",\"10325\",\"1162\",\"1404\",\"1445\",\"2034\",\"1613\",\"7130\",\"11017\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00019349\",\"0.0018276\",\"0.0025804\",\"0.0028231\",\"0.0044255\",\"0.0091079\",\"0.019954\",\"0.00034652\",\"0.0010747\",\"0.001715\",\"0.0034388\",\"0.0083076\",\"0.0092926\",\"0.014955\",\"0.0011187\",\"0.0012559\",\"0.0018997\",\"0.0023693\",\"0.0036745\",\"0.014336\",\"0.016228\",\"0.0010343\",\"0.0015743\",\"0.001963\",\"0.001613\",\"0.0041353\",\"0.012717\",\"0.017046\",\"0.00045205\",\"0.00087069\",\"0.0017642\",\"0.0037994\",\"0.0049216\",\"0.014406\",\"0.017458\",\"0.003474\",\"0.0038046\",\"0.0031169\",\"0.0018029\",\"0.0020791\",\"0.015157\",\"0.018066\",\"0.0014758\",\"0.001773\",\"0.0021776\",\"0.0013368\",\"0.0019278\",\"0.011414\",\"0.018066\",\"0.00065961\",\"0.0010536\",\"0.0012964\",\"0.0043763\",\"0.0021899\",\"0.0079083\",\"0.012705\",\"0.00030782\",\"0.00089179\",\"0.0015831\",\"0.0075741\",\"0.0025857\",\"0.009903\",\"0.020801\",\"0.00081616\",\"0.0016394\",\"0.0025716\",\"0.0027563\",\"0.0021706\",\"0.0067755\",\"0.018161\",\"0.0020439\",\"0.0024696\",\"0.0025417\",\"0.0035777\",\"0.0028372\",\"0.012541\",\"0.019378\"],\"zvalues\":{\"__ndarray__\":\"AAAAAACAW0AAAAAAADyQQAAAAAAA7JZAAAAAAAAUmUAAAAAAAKijQAAAAAAAOrRAAAAAAAAoxkAAAAAAAKBoQAAAAAAAGINAAAAAAAB4jkAAAAAAAIyeQAAAAAAAc7JAAAAAAACjtEAAAAAAAJvAQAAAAAAA4INAAAAAAABQhkAAAAAAAOCQQAAAAAAADJVAAAAAAABSoEAAAAAAANa/QAAAAAAABcJAAAAAAABggkAAAAAAAPiLQAAAAAAAcJFAAAAAAACojEAAAAAAAF6iQAAAAAAAPrxAAAAAAIDtwkAAAAAAABBwQAAAAAAA8H5AAAAAAABYj0AAAAAAAOCgQAAAAAAA3KVAAAAAAAD+v0AAAAAAgGLDQAAAAAAA3J5AAAAAAADmoEAAAAAAALCbQAAAAAAABJBAAAAAAAB4kkAAAAAAgNTAQAAAAACAD8RAAAAAAAA4ikAAAAAAAICPQAAAAAAAWJNAAAAAAADAh0AAAAAAACCRQAAAAAAAWblAAAAAAIAPxEAAAAAAAHB3QAAAAAAAuIJAAAAAAAAIh0AAAAAAAHCjQAAAAAAAdJNAAAAAAACQsUAAAAAAADe8QAAAAAAA4GVAAAAAAACwf0AAAAAAACCMQAAAAAAA0rBAAAAAAAD4lkAAAAAAAP61QAAAAAAAGcdAAAAAAAAAfUAAAAAAACCNQAAAAAAA2JZAAAAAAAB8mEAAAAAAAEiTQAAAAAAAGK5AAAAAAIAqxEAAAAAAACiSQAAAAAAA8JVAAAAAAACUlkAAAAAAAMifQAAAAAAANJlAAAAAAADau0AAAAAAgITFQA==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"attr\":\"text\",\"kind\":\"ModelChanged\",\"model\":{\"id\":\"90caee0e-bf3b-457e-96bb-1e20dcb24830\",\"type\":\"Div\"},\"new\":\"<span style='font-size: 16pt'><b>Year: 2001<\/b><\/font>\"},{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"df04abae-2572-4fab-9638-eb34f1c16941\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"110\",\"1039\",\"1467\",\"1605\",\"2516\",\"5178\",\"11344\",\"197\",\"611\",\"975\",\"1955\",\"4723\",\"5283\",\"8502\",\"636\",\"714\",\"1080\",\"1347\",\"2089\",\"8150\",\"9226\",\"588\",\"895\",\"1116\",\"917\",\"2351\",\"7230\",\"9691\",\"257\",\"495\",\"1003\",\"2160\",\"2798\",\"8190\",\"9925\",\"1975\",\"2163\",\"1772\",\"1025\",\"1182\",\"8617\",\"10271\",\"839\",\"1008\",\"1238\",\"760\",\"1096\",\"6489\",\"10271\",\"375\",\"599\",\"737\",\"2488\",\"1245\",\"4496\",\"7223\",\"175\",\"507\",\"900\",\"4306\",\"1470\",\"5630\",\"11826\",\"464\",\"932\",\"1462\",\"1567\",\"1234\",\"3852\",\"10325\",\"1162\",\"1404\",\"1445\",\"2034\",\"1613\",\"7130\",\"11017\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00019349\",\"0.0018276\",\"0.0025804\",\"0.0028231\",\"0.0044255\",\"0.0091079\",\"0.019954\",\"0.00034652\",\"0.0010747\",\"0.001715\",\"0.0034388\",\"0.0083076\",\"0.0092926\",\"0.014955\",\"0.0011187\",\"0.0012559\",\"0.0018997\",\"0.0023693\",\"0.0036745\",\"0.014336\",\"0.016228\",\"0.0010343\",\"0.0015743\",\"0.001963\",\"0.001613\",\"0.0041353\",\"0.012717\",\"0.017046\",\"0.00045205\",\"0.00087069\",\"0.0017642\",\"0.0037994\",\"0.0049216\",\"0.014406\",\"0.017458\",\"0.003474\",\"0.0038046\",\"0.0031169\",\"0.0018029\",\"0.0020791\",\"0.015157\",\"0.018066\",\"0.0014758\",\"0.001773\",\"0.0021776\",\"0.0013368\",\"0.0019278\",\"0.011414\",\"0.018066\",\"0.00065961\",\"0.0010536\",\"0.0012964\",\"0.0043763\",\"0.0021899\",\"0.0079083\",\"0.012705\",\"0.00030782\",\"0.00089179\",\"0.0015831\",\"0.0075741\",\"0.0025857\",\"0.009903\",\"0.020801\",\"0.00081616\",\"0.0016394\",\"0.0025716\",\"0.0027563\",\"0.0021706\",\"0.0067755\",\"0.018161\",\"0.0020439\",\"0.0024696\",\"0.0025417\",\"0.0035777\",\"0.0028372\",\"0.012541\",\"0.019378\"],\"zvalues\":{\"__ndarray__\":\"nJ4r305cKT9Xz6yhWfFdP1BSSoF8I2U/6q+y1YogZz8U8clWhiByP1Ddx5cqp4I/3HP8DbxulD/PIUsZkbU2Pw36xEC6m1E/6pm3qC4ZXD8ALnFWoCtsP1b0iWeQA4E/xSbWZ/8Hgz8qzg+UkaCOP+zCBAorVFI/CZxvaZ+TVD+R5Skp1R9fPzpw5DfUaGM/7uERU+0Zbj9vOecI9FuNP9tFDSwfnpA/2tpMzwryUD8hF4Xx+MpZP8/pmaq2FGA/f2EZt0dtWj+l5VOkMvBwP2+djtGGC4o/Xp+ar4h0kT8oquI+MqA9P28SEbvYh0w/SeGidcHnXD+R5Skp1R9vP+4NCK2lKHQ/nGFaZNeAjT8TqH6BbuCRP1l+Vw1ndWw/0aT/KuYqbz+em4LmkohpP6crNzsQil0/W1n40iwIYT+q4fo6nwqPP6GCnQb5f5I/YoiuV9MtWD92CRbRpAxdP7ug45+/1mE/b9pfTP7mVT/sMmfn35VfP527P6AsYIc/oYKdBvl/kj8WinmVN51FPwkAFzIyQ1E/PLvn2k49VT88H4+j4exxP6cJgfmR8GE/Jj0pWjkygD80Qyc7EgWKP1n4+QJWLDQ/eAZt2Og4TT9OP/hM3O9ZP6V8jM8CBn8/kREgg40uZT96VpCHAEiEP4LfK0j8TJU/robjGW++Sj8E2nLJ8dtaPzq+kNMKEWU/DeTJE16UZj8Q9xtI/sdhP+WfCZqmwHs/8nC+St+Ykj8CCRIcZr5gPwSiwVoXO2Q/IS2AHlXSZD/5hBjcCk9tP0EDQoUNPmc/ALnubE6viT8NJvxU9NeTPw==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"110\",\"1039\",\"1467\",\"1605\",\"2516\",\"5178\",\"11344\",\"197\",\"611\",\"975\",\"1955\",\"4723\",\"5283\",\"8502\",\"636\",\"714\",\"1080\",\"1347\",\"2089\",\"8150\",\"9226\",\"588\",\"895\",\"1116\",\"917\",\"2351\",\"7230\",\"9691\",\"257\",\"495\",\"1003\",\"2160\",\"2798\",\"8190\",\"9925\",\"1975\",\"2163\",\"1772\",\"1025\",\"1182\",\"8617\",\"10271\",\"839\",\"1008\",\"1238\",\"760\",\"1096\",\"6489\",\"10271\",\"375\",\"599\",\"737\",\"2488\",\"1245\",\"4496\",\"7223\",\"175\",\"507\",\"900\",\"4306\",\"1470\",\"5630\",\"11826\",\"464\",\"932\",\"1462\",\"1567\",\"1234\",\"3852\",\"10325\",\"1162\",\"1404\",\"1445\",\"2034\",\"1613\",\"7130\",\"11017\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00019349\",\"0.0018276\",\"0.0025804\",\"0.0028231\",\"0.0044255\",\"0.0091079\",\"0.019954\",\"0.00034652\",\"0.0010747\",\"0.001715\",\"0.0034388\",\"0.0083076\",\"0.0092926\",\"0.014955\",\"0.0011187\",\"0.0012559\",\"0.0018997\",\"0.0023693\",\"0.0036745\",\"0.014336\",\"0.016228\",\"0.0010343\",\"0.0015743\",\"0.001963\",\"0.001613\",\"0.0041353\",\"0.012717\",\"0.017046\",\"0.00045205\",\"0.00087069\",\"0.0017642\",\"0.0037994\",\"0.0049216\",\"0.014406\",\"0.017458\",\"0.003474\",\"0.0038046\",\"0.0031169\",\"0.0018029\",\"0.0020791\",\"0.015157\",\"0.018066\",\"0.0014758\",\"0.001773\",\"0.0021776\",\"0.0013368\",\"0.0019278\",\"0.011414\",\"0.018066\",\"0.00065961\",\"0.0010536\",\"0.0012964\",\"0.0043763\",\"0.0021899\",\"0.0079083\",\"0.012705\",\"0.00030782\",\"0.00089179\",\"0.0015831\",\"0.0075741\",\"0.0025857\",\"0.009903\",\"0.020801\",\"0.00081616\",\"0.0016394\",\"0.0025716\",\"0.0027563\",\"0.0021706\",\"0.0067755\",\"0.018161\",\"0.0020439\",\"0.0024696\",\"0.0025417\",\"0.0035777\",\"0.0028372\",\"0.012541\",\"0.019378\"],\"zvalues\":{\"__ndarray__\":\"AAAAAACAW0AAAAAAADyQQAAAAAAA7JZAAAAAAAAUmUAAAAAAAKijQAAAAAAAOrRAAAAAAAAoxkAAAAAAAKBoQAAAAAAAGINAAAAAAAB4jkAAAAAAAIyeQAAAAAAAc7JAAAAAAACjtEAAAAAAAJvAQAAAAAAA4INAAAAAAABQhkAAAAAAAOCQQAAAAAAADJVAAAAAAABSoEAAAAAAANa/QAAAAAAABcJAAAAAAABggkAAAAAAAPiLQAAAAAAAcJFAAAAAAACojEAAAAAAAF6iQAAAAAAAPrxAAAAAAIDtwkAAAAAAABBwQAAAAAAA8H5AAAAAAABYj0AAAAAAAOCgQAAAAAAA3KVAAAAAAAD+v0AAAAAAgGLDQAAAAAAA3J5AAAAAAADmoEAAAAAAALCbQAAAAAAABJBAAAAAAAB4kkAAAAAAgNTAQAAAAACAD8RAAAAAAAA4ikAAAAAAAICPQAAAAAAAWJNAAAAAAADAh0AAAAAAACCRQAAAAAAAWblAAAAAAIAPxEAAAAAAAHB3QAAAAAAAuIJAAAAAAAAIh0AAAAAAAHCjQAAAAAAAdJNAAAAAAACQsUAAAAAAADe8QAAAAAAA4GVAAAAAAACwf0AAAAAAACCMQAAAAAAA0rBAAAAAAAD4lkAAAAAAAP61QAAAAAAAGcdAAAAAAAAAfUAAAAAAACCNQAAAAAAA2JZAAAAAAAB8mEAAAAAAAEiTQAAAAAAAGK5AAAAAAIAqxEAAAAAAACiSQAAAAAAA8JVAAAAAAACUlkAAAAAAAMifQAAAAAAANJlAAAAAAADau0AAAAAAgITFQA==\",\"dtype\":\"float64\",\"shape\":[77]}}}],\"references\":[]},\"root\":\"53d831e3-9731-47b7-beb7-c509f2b54dbb\"}", "1": "{\"content\":{\"events\":[{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"df04abae-2572-4fab-9638-eb34f1c16941\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"146\",\"695\",\"1161\",\"1540\",\"2451\",\"4240\",\"7784\",\"182\",\"360\",\"1037\",\"2017\",\"4314\",\"4138\",\"6863\",\"545\",\"590\",\"910\",\"1472\",\"2120\",\"6852\",\"7916\",\"430\",\"871\",\"924\",\"1150\",\"2488\",\"6049\",\"7865\",\"246\",\"324\",\"978\",\"2542\",\"3231\",\"6370\",\"8934\",\"1657\",\"1815\",\"1455\",\"1345\",\"1345\",\"7499\",\"8848\",\"537\",\"732\",\"1058\",\"1102\",\"1224\",\"5637\",\"8751\",\"275\",\"479\",\"650\",\"2568\",\"1363\",\"3593\",\"6114\",\"216\",\"475\",\"837\",\"4509\",\"1780\",\"4385\",\"11244\",\"384\",\"848\",\"1237\",\"1518\",\"1264\",\"3051\",\"8691\",\"1045\",\"996\",\"1141\",\"2315\",\"2192\",\"5293\",\"9166\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00029743\",\"0.0014158\",\"0.0023651\",\"0.0031372\",\"0.0049931\",\"0.0086376\",\"0.015857\",\"0.00037076\",\"0.00073338\",\"0.0021125\",\"0.004109\",\"0.0087883\",\"0.0084298\",\"0.013981\",\"0.0011103\",\"0.0012019\",\"0.0018538\",\"0.0029987\",\"0.0043188\",\"0.013959\",\"0.016126\",\"0.00087598\",\"0.0017744\",\"0.0018823\",\"0.0023427\",\"0.0050685\",\"0.012323\",\"0.016022\",\"0.00050114\",\"0.00066004\",\"0.0019923\",\"0.0051785\",\"0.0065821\",\"0.012977\",\"0.0182\",\"0.0033756\",\"0.0036974\",\"0.0029641\",\"0.00274\",\"0.00274\",\"0.015277\",\"0.018025\",\"0.001094\",\"0.0014912\",\"0.0021553\",\"0.002245\",\"0.0024935\",\"0.011483\",\"0.017827\",\"0.00056022\",\"0.0009758\",\"0.0013242\",\"0.0052314\",\"0.0027767\",\"0.0073195\",\"0.012455\",\"0.00044003\",\"0.00096765\",\"0.0017051\",\"0.0091856\",\"0.0036261\",\"0.008933\",\"0.022906\",\"0.00078227\",\"0.0017275\",\"0.00252\",\"0.0030924\",\"0.002575\",\"0.0062154\",\"0.017705\",\"0.0021288\",\"0.002029\",\"0.0023244\",\"0.004716\",\"0.0044655\",\"0.010783\",\"0.018673\"],\"zvalues\":{\"__ndarray__\":\"RDrtY/l9Mz+2Yt06aTJXPw5QH4oRYGM/sEb1LD+zaT+5Yna8oHN0P5DTqIySsIE/fyvOQuM8kD8kTE73YEw4P19Z5eAFCEg/lfZxnE9OYT8lBodcjdRwP0Qskt6b/4E/ppDxYKFDgT9fER63F6KMP8KarVa9MFI/WPC7tD2xUz8t3yE1eV9eP+k+tw28kGg/kNOojJKwcT+lB0QPWJaMP9tl6jFhg5A/3PER6T+0TD+rP+InPRJdPwaIWZwY114/Jim36hIxYz9tu18OqsJ0P6JBFzKxPIk/IJX85iRokD9nUjbi4WtAP2/QNBfSoEU/XffOuT9SYD8a1TDEAzZ1P0OAtP7M9Xo/R6N9DoqTij+kECWgBaOSP/O11EAZp2s/TxMhvhxKbj/3vOdFG0hoP+s31gspcmY/6zfWCylyZj/o/dDlYEmPP4iNFm0YdZI//adEQGLsUT+GxYKCjm5YPzi12ykHqGE/1lB8pwFkYj/3i1wyOG1kP8um09GmhIc/jgUbZktBkj9+Mq9EdltCP82Pl7ub+U8/IA3P3OixVT9bGmbGjW11PwlJDIUPv2Y/m7o3bBP7fT8y2Nm0HYKJPz5rRnRt1jw/B50upUC1Tz/kN6QIuu9bP/bv2Wbhz4I/P4AbfZW0bT+XmW7rcEuCP+UNk3ihdJc//glbZyiiST+0hXRHt01cPzfRkTTCpGQ/4Pgk7kFVaT/k6mLqGxhlP60qpqBMdXk/wdOZs0Ahkj/3b6YnfXBhP3sIBTMmn2A/lyAcrp8KYz/zWjidHVFzP8z1FH9fSnI/541fOT0Vhj+qSMO46h6TPw==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"146\",\"695\",\"1161\",\"1540\",\"2451\",\"4240\",\"7784\",\"182\",\"360\",\"1037\",\"2017\",\"4314\",\"4138\",\"6863\",\"545\",\"590\",\"910\",\"1472\",\"2120\",\"6852\",\"7916\",\"430\",\"871\",\"924\",\"1150\",\"2488\",\"6049\",\"7865\",\"246\",\"324\",\"978\",\"2542\",\"3231\",\"6370\",\"8934\",\"1657\",\"1815\",\"1455\",\"1345\",\"1345\",\"7499\",\"8848\",\"537\",\"732\",\"1058\",\"1102\",\"1224\",\"5637\",\"8751\",\"275\",\"479\",\"650\",\"2568\",\"1363\",\"3593\",\"6114\",\"216\",\"475\",\"837\",\"4509\",\"1780\",\"4385\",\"11244\",\"384\",\"848\",\"1237\",\"1518\",\"1264\",\"3051\",\"8691\",\"1045\",\"996\",\"1141\",\"2315\",\"2192\",\"5293\",\"9166\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00029743\",\"0.0014158\",\"0.0023651\",\"0.0031372\",\"0.0049931\",\"0.0086376\",\"0.015857\",\"0.00037076\",\"0.00073338\",\"0.0021125\",\"0.004109\",\"0.0087883\",\"0.0084298\",\"0.013981\",\"0.0011103\",\"0.0012019\",\"0.0018538\",\"0.0029987\",\"0.0043188\",\"0.013959\",\"0.016126\",\"0.00087598\",\"0.0017744\",\"0.0018823\",\"0.0023427\",\"0.0050685\",\"0.012323\",\"0.016022\",\"0.00050114\",\"0.00066004\",\"0.0019923\",\"0.0051785\",\"0.0065821\",\"0.012977\",\"0.0182\",\"0.0033756\",\"0.0036974\",\"0.0029641\",\"0.00274\",\"0.00274\",\"0.015277\",\"0.018025\",\"0.001094\",\"0.0014912\",\"0.0021553\",\"0.002245\",\"0.0024935\",\"0.011483\",\"0.017827\",\"0.00056022\",\"0.0009758\",\"0.0013242\",\"0.0052314\",\"0.0027767\",\"0.0073195\",\"0.012455\",\"0.00044003\",\"0.00096765\",\"0.0017051\",\"0.0091856\",\"0.0036261\",\"0.008933\",\"0.022906\",\"0.00078227\",\"0.0017275\",\"0.00252\",\"0.0030924\",\"0.002575\",\"0.0062154\",\"0.017705\",\"0.0021288\",\"0.002029\",\"0.0023244\",\"0.004716\",\"0.0044655\",\"0.010783\",\"0.018673\"],\"zvalues\":{\"__ndarray__\":\"AAAAAABAYkAAAAAAALiFQAAAAAAAJJJAAAAAAAAQmEAAAAAAACajQAAAAAAAkLBAAAAAAABovkAAAAAAAMBmQAAAAAAAgHZAAAAAAAA0kEAAAAAAAISfQAAAAAAA2rBAAAAAAAAqsEAAAAAAAM+6QAAAAAAACIFAAAAAAABwgkAAAAAAAHCMQAAAAAAAAJdAAAAAAACQoEAAAAAAAMS6QAAAAAAA7L5AAAAAAADgekAAAAAAADiLQAAAAAAA4IxAAAAAAAD4kUAAAAAAAHCjQAAAAAAAobdAAAAAAAC5vkAAAAAAAMBuQAAAAAAAQHRAAAAAAACQjkAAAAAAANyjQAAAAAAAPqlAAAAAAADiuEAAAAAAAHPBQAAAAAAA5JlAAAAAAABcnEAAAAAAALyWQAAAAAAABJVAAAAAAAAElUAAAAAAAEu9QAAAAAAASMFAAAAAAADIgEAAAAAAAOCGQAAAAAAAiJBAAAAAAAA4kUAAAAAAACCTQAAAAAAABbZAAAAAAIAXwUAAAAAAADBxQAAAAAAA8H1AAAAAAABQhEAAAAAAABCkQAAAAAAATJVAAAAAAAASrEAAAAAAAOK3QAAAAAAAAGtAAAAAAACwfUAAAAAAACiKQAAAAAAAnbFAAAAAAADQm0AAAAAAACGxQAAAAAAA9sVAAAAAAAAAeEAAAAAAAICKQAAAAAAAVJNAAAAAAAC4l0AAAAAAAMCTQAAAAAAA1qdAAAAAAID5wEAAAAAAAFSQQAAAAAAAII9AAAAAAADUkUAAAAAAABaiQAAAAAAAIKFAAAAAAACttEAAAAAAAOfBQA==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"attr\":\"text\",\"kind\":\"ModelChanged\",\"model\":{\"id\":\"90caee0e-bf3b-457e-96bb-1e20dcb24830\",\"type\":\"Div\"},\"new\":\"<span style='font-size: 16pt'><b>Year: 2002<\/b><\/font>\"}],\"references\":[]},\"root\":\"53d831e3-9731-47b7-beb7-c509f2b54dbb\"}", "2": "{\"content\":{\"events\":[{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"df04abae-2572-4fab-9638-eb34f1c16941\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"129\",\"620\",\"893\",\"1502\",\"2393\",\"3571\",\"6984\",\"199\",\"440\",\"892\",\"2139\",\"5275\",\"3310\",\"6522\",\"528\",\"542\",\"873\",\"1661\",\"2571\",\"6418\",\"8002\",\"431\",\"776\",\"913\",\"1304\",\"2564\",\"5746\",\"7804\",\"227\",\"346\",\"693\",\"2730\",\"3047\",\"6242\",\"9061\",\"1702\",\"1638\",\"1272\",\"1589\",\"1541\",\"7180\",\"8555\",\"688\",\"697\",\"862\",\"1518\",\"1501\",\"4984\",\"8906\",\"182\",\"395\",\"569\",\"2632\",\"1569\",\"3192\",\"6193\",\"190\",\"483\",\"801\",\"4959\",\"2045\",\"4021\",\"10901\",\"397\",\"860\",\"1084\",\"1777\",\"1257\",\"2789\",\"8770\",\"1092\",\"998\",\"1056\",\"2326\",\"2458\",\"4756\",\"9853\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00027106\",\"0.0013028\",\"0.0018764\",\"0.003156\",\"0.0050282\",\"0.0075035\",\"0.014675\",\"0.00041814\",\"0.00092454\",\"0.0018743\",\"0.0044945\",\"0.011084\",\"0.0069551\",\"0.013704\",\"0.0011094\",\"0.0011389\",\"0.0018344\",\"0.0034901\",\"0.0054022\",\"0.013486\",\"0.016814\",\"0.00090563\",\"0.0016306\",\"0.0019184\",\"0.00274\",\"0.0053875\",\"0.012074\",\"0.016398\",\"0.00047698\",\"0.00072702\",\"0.0014561\",\"0.0057363\",\"0.0064024\",\"0.013116\",\"0.019039\",\"0.0035763\",\"0.0034418\",\"0.0026728\",\"0.0033388\",\"0.003238\",\"0.015087\",\"0.017976\",\"0.0014456\",\"0.0014646\",\"0.0018113\",\"0.0031897\",\"0.0031539\",\"0.010473\",\"0.018714\",\"0.00038242\",\"0.00082998\",\"0.0011956\",\"0.0055304\",\"0.0032968\",\"0.0067071\",\"0.013013\",\"0.00039923\",\"0.0010149\",\"0.0016831\",\"0.01042\",\"0.004297\",\"0.008449\",\"0.022905\",\"0.00083419\",\"0.0018071\",\"0.0022777\",\"0.0037339\",\"0.0026412\",\"0.0058603\",\"0.018428\",\"0.0022945\",\"0.002097\",\"0.0022189\",\"0.0048874\",\"0.0051648\",\"0.0099934\",\"0.020703\"],\"zvalues\":{\"__ndarray__\":\"+/LWApnDMT/MN4nzKlhVP3EsXQsqvl4/GCeRjLHaaT8FUgsze5h0Px/mUgD2u34/5jInmOYNjj+QmMpPSWc7P9fjRs2XS04/KhM031m1Xj/tjNk+2GhyPxV7W74vs4Y/yzTZvuZ8fD8mv+Gh8BCMP04ixBRbLVI/L4QDf72oUj/mMieY5g1eP6CAVENXl2w/2jYw4Kogdj+MdstjXp6LP7SBykWwN5E/2hxjsvSsTT8Gn5TcBbdaP/wlk35tbl8/qmCseDByZj+dSuiSPhF2P0UrT+YPuog/5+hNI6DKkD+Zp8WhXEI/P79TGF+30kc/Bm1Bi4fbVz+d45G7/X53P9P2SmdvOXo/c0pDmHrcij+7uqqwAn+TP84Gn8wCTG0/8N17R/0xbD87zBq2LeVlP6byjA0RWms/AJSy6YyGaj8wHhbS0uWOP1j7FjxLaJI/o+5zrnavVz8i0uU7yP5XP9ocY7L0rF0/UPHZ7TIhaj91mnx2SdZpP6GDBHibcoU/3JXcBKIpkz+54d+U/Q85P+cA1EZoMks/qi5ZJ7KWUz9T+KKBEad2P+H18VPvAWs/HsscqOl4ez+hj8eJf6aKP5cKAxoDKjo/1rCKUcOgUD/zFpgsWpNbP6MUBO4QV4U/6roTMbyZcT/mQDG0uE2BP5kVIYeGdJc/A2Z496hVSz9M6hBaVJtdPy+EA3+9qGI/sjqkRIGWbj+njuZqFKNlP3QY8Eb8AHg/AT9/jbjekj9L6acv/stiP0VFHBTGLWE/TiLEFFstYj+h6lpP3AR0P8YspwCyJ3U/OzNxjW53hD/zHZ06QzOVPw==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"129\",\"620\",\"893\",\"1502\",\"2393\",\"3571\",\"6984\",\"199\",\"440\",\"892\",\"2139\",\"5275\",\"3310\",\"6522\",\"528\",\"542\",\"873\",\"1661\",\"2571\",\"6418\",\"8002\",\"431\",\"776\",\"913\",\"1304\",\"2564\",\"5746\",\"7804\",\"227\",\"346\",\"693\",\"2730\",\"3047\",\"6242\",\"9061\",\"1702\",\"1638\",\"1272\",\"1589\",\"1541\",\"7180\",\"8555\",\"688\",\"697\",\"862\",\"1518\",\"1501\",\"4984\",\"8906\",\"182\",\"395\",\"569\",\"2632\",\"1569\",\"3192\",\"6193\",\"190\",\"483\",\"801\",\"4959\",\"2045\",\"4021\",\"10901\",\"397\",\"860\",\"1084\",\"1777\",\"1257\",\"2789\",\"8770\",\"1092\",\"998\",\"1056\",\"2326\",\"2458\",\"4756\",\"9853\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00027106\",\"0.0013028\",\"0.0018764\",\"0.003156\",\"0.0050282\",\"0.0075035\",\"0.014675\",\"0.00041814\",\"0.00092454\",\"0.0018743\",\"0.0044945\",\"0.011084\",\"0.0069551\",\"0.013704\",\"0.0011094\",\"0.0011389\",\"0.0018344\",\"0.0034901\",\"0.0054022\",\"0.013486\",\"0.016814\",\"0.00090563\",\"0.0016306\",\"0.0019184\",\"0.00274\",\"0.0053875\",\"0.012074\",\"0.016398\",\"0.00047698\",\"0.00072702\",\"0.0014561\",\"0.0057363\",\"0.0064024\",\"0.013116\",\"0.019039\",\"0.0035763\",\"0.0034418\",\"0.0026728\",\"0.0033388\",\"0.003238\",\"0.015087\",\"0.017976\",\"0.0014456\",\"0.0014646\",\"0.0018113\",\"0.0031897\",\"0.0031539\",\"0.010473\",\"0.018714\",\"0.00038242\",\"0.00082998\",\"0.0011956\",\"0.0055304\",\"0.0032968\",\"0.0067071\",\"0.013013\",\"0.00039923\",\"0.0010149\",\"0.0016831\",\"0.01042\",\"0.004297\",\"0.008449\",\"0.022905\",\"0.00083419\",\"0.0018071\",\"0.0022777\",\"0.0037339\",\"0.0026412\",\"0.0058603\",\"0.018428\",\"0.0022945\",\"0.002097\",\"0.0022189\",\"0.0048874\",\"0.0051648\",\"0.0099934\",\"0.020703\"],\"zvalues\":{\"__ndarray__\":\"AAAAAAAgYEAAAAAAAGCDQAAAAAAA6ItAAAAAAAB4l0AAAAAAALKiQAAAAAAA5qtAAAAAAABIu0AAAAAAAOBoQAAAAAAAgHtAAAAAAADgi0AAAAAAALagQAAAAAAAm7RAAAAAAADcqUAAAAAAAHq5QAAAAAAAgIBAAAAAAADwgEAAAAAAAEiLQAAAAAAA9JlAAAAAAAAWpEAAAAAAABK5QAAAAAAAQr9AAAAAAADwekAAAAAAAECIQAAAAAAAiIxAAAAAAABglEAAAAAAAAikQAAAAAAAcrZAAAAAAAB8vkAAAAAAAGBsQAAAAAAAoHVAAAAAAACohUAAAAAAAFSlQAAAAAAAzqdAAAAAAABiuEAAAAAAgLLBQAAAAAAAmJpAAAAAAACYmUAAAAAAAOCTQAAAAAAA1JhAAAAAAAAUmEAAAAAAAAy8QAAAAACAtcBAAAAAAACAhUAAAAAAAMiFQAAAAAAA8IpAAAAAAAC4l0AAAAAAAHSXQAAAAAAAeLNAAAAAAABlwUAAAAAAAMBmQAAAAAAAsHhAAAAAAADIgUAAAAAAAJCkQAAAAAAAhJhAAAAAAADwqEAAAAAAADG4QAAAAAAAwGdAAAAAAAAwfkAAAAAAAAiJQAAAAAAAX7NAAAAAAAD0n0AAAAAAAGqvQAAAAACASsVAAAAAAADQeEAAAAAAAOCKQAAAAAAA8JBAAAAAAADEm0AAAAAAAKSTQAAAAAAAyqVAAAAAAAAhwUAAAAAAABCRQAAAAAAAMI9AAAAAAACAkEAAAAAAACyiQAAAAAAANKNAAAAAAACUskAAAAAAgD7DQA==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"attr\":\"text\",\"kind\":\"ModelChanged\",\"model\":{\"id\":\"90caee0e-bf3b-457e-96bb-1e20dcb24830\",\"type\":\"Div\"},\"new\":\"<span style='font-size: 16pt'><b>Year: 2003<\/b><\/font>\"}],\"references\":[]},\"root\":\"53d831e3-9731-47b7-beb7-c509f2b54dbb\"}", "3": "{\"content\":{\"events\":[{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"df04abae-2572-4fab-9638-eb34f1c16941\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"67\",\"396\",\"671\",\"1093\",\"1763\",\"2525\",\"4935\",\"126\",\"368\",\"679\",\"2002\",\"4455\",\"2153\",\"5003\",\"420\",\"416\",\"654\",\"1555\",\"1964\",\"4589\",\"5869\",\"423\",\"543\",\"704\",\"1319\",\"2298\",\"4212\",\"5663\",\"148\",\"220\",\"639\",\"2735\",\"2508\",\"4588\",\"6552\",\"1225\",\"1091\",\"930\",\"1357\",\"1271\",\"5381\",\"6585\",\"473\",\"531\",\"647\",\"1298\",\"1381\",\"3379\",\"6012\",\"130\",\"277\",\"445\",\"2189\",\"1473\",\"2197\",\"5131\",\"125\",\"313\",\"759\",\"4308\",\"1775\",\"2962\",\"7195\",\"241\",\"580\",\"823\",\"1262\",\"901\",\"2018\",\"6639\",\"583\",\"646\",\"721\",\"2024\",\"2135\",\"3494\",\"6128\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00017259\",\"0.0010201\",\"0.0017285\",\"0.0028155\",\"0.0045414\",\"0.0065043\",\"0.012712\",\"0.00032457\",\"0.00094795\",\"0.0017491\",\"0.0051571\",\"0.011476\",\"0.005546\",\"0.012888\",\"0.0010819\",\"0.0010716\",\"0.0016847\",\"0.0040056\",\"0.0050592\",\"0.011821\",\"0.015118\",\"0.0010896\",\"0.0013987\",\"0.0018135\",\"0.0033977\",\"0.0059196\",\"0.01085\",\"0.014588\",\"0.00038124\",\"0.00056671\",\"0.001646\",\"0.0070452\",\"0.0064605\",\"0.011818\",\"0.016878\",\"0.0031555\",\"0.0028104\",\"0.0023956\",\"0.0034956\",\"0.003274\",\"0.013861\",\"0.016963\",\"0.0012184\",\"0.0013678\",\"0.0016666\",\"0.0033436\",\"0.0035574\",\"0.0087042\",\"0.015487\",\"0.00033487\",\"0.00071354\",\"0.0011463\",\"0.0056388\",\"0.0037944\",\"0.0056594\",\"0.013217\",\"0.00032199\",\"0.00080628\",\"0.0019552\",\"0.011097\",\"0.0045723\",\"0.00763\",\"0.018534\",\"0.00062081\",\"0.0014941\",\"0.00212\",\"0.0032509\",\"0.0023209\",\"0.0051983\",\"0.017102\",\"0.0015018\",\"0.0016641\",\"0.0018573\",\"0.0052137\",\"0.0054997\",\"0.0090004\",\"0.015785\"],\"zvalues\":{\"__ndarray__\":\"cKDqJiKfJj/smJIghrZQPx6Dv5q4UVw/Zwf+QJQQZz/XVajMBJpyPwrrLIE/pHo/IOHze+8Iij9DTqPjZEU1PwliaAsBEE8/qVeR6yeoXD9HgUcwlB91Pwwnzp2sgIc/OKSldXG3dj/00tLBxWSKP44WCBPUuVE/SCyfapyOUT92nwEPDJpbP05wVD8xaHA/4VROAPC4dD8PfAWvpTWIP/AWav9X9o4/QsZW0T3aUT9qOqKNw+pWP9wPIchDtl0/luGRlnjVaz9Ob9zbGT94Pwt08fZ9OIY/0LJGsyHgjT8/cKdcLfw4P+qpFF3qkUI/8TB4V/v3Wj/c7Y0Dett8PyByPV5Udno/vTTC8Us0iD+Xr/T4YUiRP+QgwZuq2Wk/1szjVsYFZz8dYqQ5BqBjP2A6hPbAomw/9GMcpCrSaj9KIio3R2OMP2PIyquqXpE/qDZ2inX2Uz+Ze2eUHGlWP3wFSqhqTls/n3p+fAZkaz8x+b7vZyRtP6dhBh9904E/1+3+t3i3jz9a90aFQ/I1P6q+wpycYUc/wc6X7+/HUj9Us5Gwrhh3P1J/dQBoFW8/dyjGhEoudz8KfHZjpBGLP/5jOjstGjU/jzcjdIZrSj+N0uGJQARgP9wyLPAkuoY/iwX3im66cj+Xad6on0B/P0rB8iiV+pI/xUVixbJXRD9usWxjhnpYP7okKc39XWE/ZlymBoyhaj/gECh3XANjP4xrsNjLSnU/DU7joSGDkT8iYbsh8JpYP+vKL76cQ1s/hPPeU/BtXj9mw9e3AFt1P6mcL9jShnY/kWs/JM1ugj+Knz09ESqQPw==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"cols\":[\"District\",\"Year_Frequency\",\"Location_Description\",\"Frequency\",\"zvalues\"],\"column_source\":{\"id\":\"dd1ebbd8-2e5b-4e82-8b6b-2194205fa8bb\",\"type\":\"ColumnDataSource\"},\"kind\":\"ColumnDataChanged\",\"new\":{\"District\":[\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"2\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"3\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"4\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"6\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"7\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"8\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"9\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"10\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"11\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"12\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\",\"25\"],\"Frequency\":[\"67\",\"396\",\"671\",\"1093\",\"1763\",\"2525\",\"4935\",\"126\",\"368\",\"679\",\"2002\",\"4455\",\"2153\",\"5003\",\"420\",\"416\",\"654\",\"1555\",\"1964\",\"4589\",\"5869\",\"423\",\"543\",\"704\",\"1319\",\"2298\",\"4212\",\"5663\",\"148\",\"220\",\"639\",\"2735\",\"2508\",\"4588\",\"6552\",\"1225\",\"1091\",\"930\",\"1357\",\"1271\",\"5381\",\"6585\",\"473\",\"531\",\"647\",\"1298\",\"1381\",\"3379\",\"6012\",\"130\",\"277\",\"445\",\"2189\",\"1473\",\"2197\",\"5131\",\"125\",\"313\",\"759\",\"4308\",\"1775\",\"2962\",\"7195\",\"241\",\"580\",\"823\",\"1262\",\"901\",\"2018\",\"6639\",\"583\",\"646\",\"721\",\"2024\",\"2135\",\"3494\",\"6128\"],\"Location_Description\":[\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\",\"RESIDENCE-GARAGE\",\"PARKING LOT/GARAGE(NON.RESID.)\",\"OTHER\",\"SIDEWALK\",\"APARTMENT\",\"RESIDENCE\",\"STREET\"],\"Year_Frequency\":[\"0.00017259\",\"0.0010201\",\"0.0017285\",\"0.0028155\",\"0.0045414\",\"0.0065043\",\"0.012712\",\"0.00032457\",\"0.00094795\",\"0.0017491\",\"0.0051571\",\"0.011476\",\"0.005546\",\"0.012888\",\"0.0010819\",\"0.0010716\",\"0.0016847\",\"0.0040056\",\"0.0050592\",\"0.011821\",\"0.015118\",\"0.0010896\",\"0.0013987\",\"0.0018135\",\"0.0033977\",\"0.0059196\",\"0.01085\",\"0.014588\",\"0.00038124\",\"0.00056671\",\"0.001646\",\"0.0070452\",\"0.0064605\",\"0.011818\",\"0.016878\",\"0.0031555\",\"0.0028104\",\"0.0023956\",\"0.0034956\",\"0.003274\",\"0.013861\",\"0.016963\",\"0.0012184\",\"0.0013678\",\"0.0016666\",\"0.0033436\",\"0.0035574\",\"0.0087042\",\"0.015487\",\"0.00033487\",\"0.00071354\",\"0.0011463\",\"0.0056388\",\"0.0037944\",\"0.0056594\",\"0.013217\",\"0.00032199\",\"0.00080628\",\"0.0019552\",\"0.011097\",\"0.0045723\",\"0.00763\",\"0.018534\",\"0.00062081\",\"0.0014941\",\"0.00212\",\"0.0032509\",\"0.0023209\",\"0.0051983\",\"0.017102\",\"0.0015018\",\"0.0016641\",\"0.0018573\",\"0.0052137\",\"0.0054997\",\"0.0090004\",\"0.015785\"],\"zvalues\":{\"__ndarray__\":\"AAAAAADAUEAAAAAAAMB4QAAAAAAA+IRAAAAAAAAUkUAAAAAAAIybQAAAAAAAuqNAAAAAAABHs0AAAAAAAIBfQAAAAAAAAHdAAAAAAAA4hUAAAAAAAEifQAAAAAAAZ7FAAAAAAADSoEAAAAAAAIuzQAAAAAAAQHpAAAAAAAAAekAAAAAAAHCEQAAAAAAATJhAAAAAAACwnkAAAAAAAO2xQAAAAAAA7bZAAAAAAABwekAAAAAAAPiAQAAAAAAAAIZAAAAAAACclEAAAAAAAPShQAAAAAAAdLBAAAAAAAAftkAAAAAAAIBiQAAAAAAAgGtAAAAAAAD4g0AAAAAAAF6lQAAAAAAAmKNAAAAAAADssUAAAAAAAJi5QAAAAAAAJJNAAAAAAAAMkUAAAAAAABCNQAAAAAAANJVAAAAAAADck0AAAAAAAAW1QAAAAAAAublAAAAAAACQfUAAAAAAAJiAQAAAAAAAOIRAAAAAAABIlEAAAAAAAJSVQAAAAAAAZqpAAAAAAAB8t0AAAAAAAEBgQAAAAAAAUHFAAAAAAADQe0AAAAAAABqhQAAAAAAABJdAAAAAAAAqoUAAAAAAAAu0QAAAAAAAQF9AAAAAAACQc0AAAAAAALiHQAAAAAAA1LBAAAAAAAC8m0AAAAAAACSnQAAAAAAAG7xAAAAAAAAgbkAAAAAAACCCQAAAAAAAuIlAAAAAAAC4k0AAAAAAACiMQAAAAAAAiJ9AAAAAAADvuUAAAAAAADiCQAAAAAAAMIRAAAAAAACIhkAAAAAAAKCfQAAAAAAArqBAAAAAAABMq0AAAAAAAPC3QA==\",\"dtype\":\"float64\",\"shape\":[77]}}},{\"attr\":\"text\",\"kind\":\"ModelChanged\",\"model\":{\"id\":\"90caee0e-bf3b-457e-96bb-1e20dcb24830\",\"type\":\"Div\"},\"new\":\"<span style='font-size: 16pt'><b>Year: 2004<\/b><\/font>\"}],\"references\":[]},\"root\":\"53d831e3-9731-47b7-beb7-c509f2b54dbb\"}"};
+    var dim_vals = ['2001.0'];
+    var keyMap = {"('2001.0',)": 0, "('2002.0',)": 1, "('2003.0',)": 2, "('2004.0',)": 3};
+    var notFound = "<h2 style='vertical-align: middle>No frame at selected dimension value.<h2>";
+    function create_widget() {
+        setTimeout(function() {
+            anim5017f04d6e3e4a8f83c7893b6f69d297 = new BokehSelectionWidget(frame_data, "5017f04d6e3e4a8f83c7893b6f69d297", widget_ids,
+				keyMap, dim_vals, notFound, false, "default",
+				true, "", false);
+        }, 0);
+    }
+    
+    create_widget();
+    
+})();
+</script>
+  </body>
+</html>
